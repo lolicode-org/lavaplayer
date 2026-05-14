@@ -2,7 +2,7 @@
 #include <opus.h>
 #include <stdint.h>
 
-CONNECTOR_EXPORT jlong JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_opus_OpusEncoderLibrary_create(JNIEnv *jni, jobject me, jint sample_rate, jint channels, jint application, jint quality) {
+CONNECTOR_EXPORT jlong JNICALL LAVA_JNI_NAME(_natives_opus_OpusEncoderLibrary_create)(JNIEnv *jni, jobject me, jint sample_rate, jint channels, jint application, jint quality) {
 	int error;
 	OpusEncoder* encoder = opus_encoder_create(sample_rate, channels, application, &error);
 
@@ -13,7 +13,7 @@ CONNECTOR_EXPORT jlong JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_opu
 	return (jlong)(uintptr_t) encoder;
 }
 
-CONNECTOR_EXPORT jint JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_opus_OpusEncoderLibrary_encode(JNIEnv *jni, jobject me, jlong instance, jobject direct_input, jint frame_size,
+CONNECTOR_EXPORT jint JNICALL LAVA_JNI_NAME(_natives_opus_OpusEncoderLibrary_encode)(JNIEnv *jni, jobject me, jlong instance, jobject direct_input, jint frame_size,
 		jobject direct_output, jint output_length) {
 	if (instance == 0) {
 		return 0;
@@ -25,7 +25,7 @@ CONNECTOR_EXPORT jint JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_opus
 	return opus_encode((OpusEncoder*)(uintptr_t) instance, input, frame_size, output, output_length);
 }
 
-CONNECTOR_EXPORT void JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_opus_OpusEncoderLibrary_destroy(JNIEnv *jni, jobject me, jlong instance) {
+CONNECTOR_EXPORT void JNICALL LAVA_JNI_NAME(_natives_opus_OpusEncoderLibrary_destroy)(JNIEnv *jni, jobject me, jlong instance) {
 	OpusEncoder* encoder = (OpusEncoder*)(uintptr_t) instance;
 
 	if (encoder != NULL) {
@@ -33,12 +33,12 @@ CONNECTOR_EXPORT void JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_opus
 	}
 }
 
-CONNECTOR_EXPORT jlong JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_opus_OpusDecoderLibrary_create(JNIEnv *jni, jobject me, jint sample_rate, jint channels) {
+CONNECTOR_EXPORT jlong JNICALL LAVA_JNI_NAME(_natives_opus_OpusDecoderLibrary_create)(JNIEnv *jni, jobject me, jint sample_rate, jint channels) {
 	int error;
 	return (jlong)(uintptr_t) opus_decoder_create(sample_rate, channels, &error);
 }
 
-CONNECTOR_EXPORT jint JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_opus_OpusDecoderLibrary_decode(JNIEnv *jni, jobject me, jlong instance, jobject direct_input, jint input_size,
+CONNECTOR_EXPORT jint JNICALL LAVA_JNI_NAME(_natives_opus_OpusDecoderLibrary_decode)(JNIEnv *jni, jobject me, jlong instance, jobject direct_input, jint input_size,
 	jobject direct_output, jint frame_size) {
 
 	if (instance == 0) {
@@ -51,7 +51,7 @@ CONNECTOR_EXPORT jint JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_opus
 	return opus_decode((OpusDecoder*)(uintptr_t) instance, input, input_size, output, frame_size, 0);
 }
 
-CONNECTOR_EXPORT void JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_opus_OpusDecoderLibrary_destroy(JNIEnv *jni, jobject me, jlong instance) {
+CONNECTOR_EXPORT void JNICALL LAVA_JNI_NAME(_natives_opus_OpusDecoderLibrary_destroy)(JNIEnv *jni, jobject me, jlong instance) {
 	OpusDecoder* decoder = (OpusDecoder*)(uintptr_t) instance;
 
 	if (decoder != NULL) {

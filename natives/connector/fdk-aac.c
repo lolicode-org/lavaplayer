@@ -2,22 +2,22 @@
 #include <aacdecoder_lib.h>
 #include <stdint.h>
 
-CONNECTOR_EXPORT jlong JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_aac_AacDecoderLibrary_create(JNIEnv *jni, jobject me, jint transport_type) {
+CONNECTOR_EXPORT jlong JNICALL LAVA_JNI_NAME(_natives_aac_AacDecoderLibrary_create)(JNIEnv *jni, jobject me, jint transport_type) {
 	return (jlong)(uintptr_t) aacDecoder_Open(transport_type, 1);
 }
 
-CONNECTOR_EXPORT void JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_aac_AacDecoderLibrary_destroy(JNIEnv *jni, jobject me, jlong instance) {
+CONNECTOR_EXPORT void JNICALL LAVA_JNI_NAME(_natives_aac_AacDecoderLibrary_destroy)(JNIEnv *jni, jobject me, jlong instance) {
 	aacDecoder_Close((HANDLE_AACDECODER)(uintptr_t) instance);
 }
 
-CONNECTOR_EXPORT jint JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_aac_AacDecoderLibrary_configure(JNIEnv *jni, jobject me, jlong instance, jlong buffer_data) {
+CONNECTOR_EXPORT jint JNICALL LAVA_JNI_NAME(_natives_aac_AacDecoderLibrary_configure)(JNIEnv *jni, jobject me, jlong instance, jlong buffer_data) {
 	UCHAR* buffer = (UCHAR*)&buffer_data;
 	UINT length = sizeof(jlong);
 
 	return aacDecoder_ConfigRaw((HANDLE_AACDECODER)(uintptr_t) instance, &buffer, &length);
 }
 
-CONNECTOR_EXPORT jint JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_aac_AacDecoderLibrary_fill(JNIEnv *jni, jobject me, jlong instance, jobject direct_buffer, jint offset, jint length) {
+CONNECTOR_EXPORT jint JNICALL LAVA_JNI_NAME(_natives_aac_AacDecoderLibrary_fill)(JNIEnv *jni, jobject me, jlong instance, jobject direct_buffer, jint offset, jint length) {
 	UINT in_length = length;
 	UINT in_left = length - offset;
 	UCHAR* buffer = (*jni)->GetDirectBufferAddress(jni, direct_buffer);
@@ -30,13 +30,13 @@ CONNECTOR_EXPORT jint JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_aac_
 	return length - offset - (jint) in_left;
 }
 
-CONNECTOR_EXPORT jint JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_aac_AacDecoderLibrary_decode(JNIEnv *jni, jobject me, jlong instance, jobject direct_buffer, jint length, jboolean flush) {
+CONNECTOR_EXPORT jint JNICALL LAVA_JNI_NAME(_natives_aac_AacDecoderLibrary_decode)(JNIEnv *jni, jobject me, jlong instance, jobject direct_buffer, jint length, jboolean flush) {
 	INT_PCM* buffer = (*jni)->GetDirectBufferAddress(jni, direct_buffer);
 
 	return aacDecoder_DecodeFrame((HANDLE_AACDECODER)(uintptr_t) instance, (INT_PCM*) buffer, length, flush ? AACDEC_FLUSH : 0);
 }
 
-CONNECTOR_EXPORT jlong JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_aac_AacDecoderLibrary_getStreamInfo(JNIEnv *jni, jobject me, jlong instance) {
+CONNECTOR_EXPORT jlong JNICALL LAVA_JNI_NAME(_natives_aac_AacDecoderLibrary_getStreamInfo)(JNIEnv *jni, jobject me, jlong instance) {
 	HANDLE_AACDECODER handle = (HANDLE_AACDECODER)(uintptr_t) instance;
 	if (handle == NULL) {
 		return 0;

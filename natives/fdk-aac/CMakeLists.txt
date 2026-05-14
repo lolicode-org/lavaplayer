@@ -25,3 +25,9 @@ else()
 endif()
 
 add_library(fdk-aac STATIC ${MAIN_SOURCES})
+
+if (NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
+	# Upstream fdk-aac embeds __DATE__/__TIME__ in version metadata.
+	# Zig/Clang reports that via -Wdate-time, which becomes fatal under -Werror.
+	target_compile_options(fdk-aac PRIVATE -Wno-date-time)
+endif()

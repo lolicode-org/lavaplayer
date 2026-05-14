@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
 project(connector C)
 
+set(LAVA_JNI_PREFIX "org_lolicode_lavaplayer" CACHE STRING
+	"JNI package prefix for lavaplayer native classes, using JNI-mangled underscores")
+
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 	include_directories("$ENV{JAVA_HOME}/include/win32")
 	set(SYSNAME "win")
@@ -19,12 +22,12 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 	set(COMPILER_FLAGS_DEBUG "/MTd")
 	set(COMPILER_FLAGS_RELEASE "/Ox /MT")
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-	set(COMPILER_FLAGS "-fvisibility=hidden")
+	set(COMPILER_FLAGS "-fvisibility=hidden -fdata-sections -ffunction-sections")
 	set(COMPILER_FLAGS_DEBUG "-g")
 	set(COMPILER_FLAGS_RELEASE "-O3 -DNDEBUG")
 	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-dead_strip")
 else()
-	set(COMPILER_FLAGS "-Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-function -fvisibility=hidden")
+	set(COMPILER_FLAGS "-Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-function -fvisibility=hidden -fdata-sections -ffunction-sections")
 	set(COMPILER_FLAGS_DEBUG "-g")
 	set(COMPILER_FLAGS_RELEASE "-O3 -DNDEBUG")
 	# --exclude-libs,ALL is GNU ld only; lld (Windows cross, musl/Zig) does not support it
@@ -61,6 +64,8 @@ else()
         add_library(connector SHARED samplerate.c fdk-aac.c vorbis.c opus.c mpg123.c ${SYSNAME}/statistics.c)
 endif()
 
+target_include_directories(connector PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 	# Output connector.dll, not libconnector.dll (MinGW adds lib prefix by default)
 	set_target_properties(connector PROPERTIES PREFIX "")
@@ -69,3 +74,5 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 else()
 	target_link_libraries(connector samplerate fdk-aac vorbis ogg opus mpg123)
 endif()
+
+target_compile_definitions(connector PRIVATE LAVA_JNI_PREFIX=${LAVA_JNI_PREFIX})

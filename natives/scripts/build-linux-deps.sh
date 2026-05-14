@@ -35,6 +35,15 @@ if [ "$CONFIGURE_HOST" = "native" ]; then
     RANLIB="${RANLIB:-ranlib}"
     STRIP="${STRIP:-strip}"
     HOST_FLAG=""
+elif [ "$CONFIGURE_HOST" = "x86_64-linux-musl" ]; then
+    # Ubuntu musl-tools provides musl-gcc, but not a matching musl C++ wrapper.
+    # Keep this aligned with the CI workflow and CMake toolchain file.
+    CC="${CC:-musl-gcc}"
+    CXX="${CXX:-g++}"
+    AR="${AR:-ar}"
+    RANLIB="${RANLIB:-ranlib}"
+    STRIP="${STRIP:-strip}"
+    HOST_FLAG="--host=${CONFIGURE_HOST}"
 else
     CC="${CC:-${CONFIGURE_HOST}-gcc}"
     CXX="${CXX:-${CONFIGURE_HOST}-g++}"

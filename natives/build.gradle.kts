@@ -1,21 +1,11 @@
-import com.vanniktech.maven.publish.JavaLibrary
-import com.vanniktech.maven.publish.JavadocJar
 import org.apache.tools.ant.taskdefs.condition.Os
 import java.net.HttpURLConnection
 import java.net.URI
+import java.security.MessageDigest
 import java.util.Properties
 
 plugins {
-    `java-library`
-    alias(libs.plugins.maven.publish.base)
-}
-
-base {
-    archivesName.set("lavaplayer-natives")
-}
-
-mavenPublishing {
-    configure(JavaLibrary(JavadocJar.Javadoc()))
+    base
 }
 
 val versionProps = Properties().apply {
@@ -28,17 +18,58 @@ val oggVersion = versionProps["ogg"] as String
 val vorbisVersion = versionProps["vorbis"] as String
 val sampleRateVersion = versionProps["samplerate"] as String
 val fdkAacVersion = versionProps["fdkaac"] as String
+val opusSha256 = versionProps["opusSha256"] as String
+val mpg123Sha256 = versionProps["mpg123Sha256"] as String
+val oggSha256 = versionProps["oggSha256"] as String
+val vorbisSha256 = versionProps["vorbisSha256"] as String
+val sampleRateSha256 = versionProps["samplerateSha256"] as String
+val fdkAacSha256 = versionProps["fdkaacSha256"] as String
 
-fun downloadFile(url: String, dest: String) {
+fun verifySha256(dest: String, expectedSha256: String) {
+    val digest = MessageDigest.getInstance("SHA-256")
+    file(dest).inputStream().use { input ->
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) {
+                break
+            }
+
+            digest.update(buffer, 0, count)
+        }
+    }
+
+    val actual = digest.digest().joinToString("") { "%02x".format(it) }
+    check(actual.equals(expectedSha256, ignoreCase = true)) {
+        "Checksum mismatch for $dest. Expected $expectedSha256, got $actual."
+    }
+}
+
+fun extractTarArchive(archivePath: String, unpackPath: String) {
+    val process = ProcessBuilder("tar", "xf", archivePath, "-C", unpackPath)
+        .inheritIO()
+        .start()
+
+    val exitCode = process.waitFor()
+    check(exitCode == 0) {
+        "Failed to extract archive $archivePath."
+    }
+}
+
+fun downloadFile(url: String, dest: String, sha256: String) {
     val destFile = file(dest)
     destFile.parentFile.mkdirs()
     val connection = URI(url).toURL().openConnection() as HttpURLConnection
     connection.instanceFollowRedirects = true
+    check(connection.responseCode in 200..299) {
+        "Failed to download $url, HTTP ${connection.responseCode}."
+    }
     connection.inputStream.use { input ->
         destFile.outputStream().use { output ->
             input.copyTo(output)
         }
     }
+    verifySha256(dest, sha256)
 }
 
 tasks.register("load") {
@@ -49,17 +80,11 @@ tasks.register("load") {
 
             downloadFile(
                 "https://github.com/libsndfile/libsamplerate/releases/download/$sampleRateVersion/libsamplerate-$sampleRateVersion.tar.xz",
-                downloadPath
+                downloadPath,
+                sampleRateSha256
             )
 
-            val process = ProcessBuilder("tar", "xf", downloadPath, "-C", unpackPath)
-                .inheritIO()
-                .start()
-
-            val exitCode = process.waitFor()
-            if (exitCode != 0) {
-                throw IllegalStateException("Failed to extract libsamplerate.")
-            }
+            extractTarArchive(downloadPath, unpackPath)
 
             copy {
                 from("$unpackPath/libsamplerate-$sampleRateVersion/src")
@@ -73,16 +98,17 @@ tasks.register("load") {
         }
 
         if (!file("$projectDir/fdk-aac/libAACdec").exists()) {
-            val downloadPath = "${layout.buildDirectory.get()}/tmp/fdk-aac-v$fdkAacVersion.zip"
-            val unpackPath = "${layout.buildDirectory.get()}"
+            val downloadPath = "${layout.buildDirectory.get()}/tmp/fdk-aac-$fdkAacVersion.tar.gz"
+            val unpackPath = "${layout.buildDirectory.get()}/tmp"
 
             downloadFile(
-                "https://github.com/mstorsjo/fdk-aac/archive/v$fdkAacVersion.zip",
-                downloadPath
+                "https://downloads.sourceforge.net/opencore-amr/fdk-aac-$fdkAacVersion.tar.gz",
+                downloadPath,
+                fdkAacSha256
             )
 
             copy {
-                from(zipTree(file(downloadPath)))
+                from(tarTree(file(downloadPath)))
                 into(unpackPath)
             }
 
@@ -94,38 +120,36 @@ tasks.register("load") {
         }
 
         if (!file("$projectDir/vorbis/libogg").exists()) {
-            val downloadPath = "${layout.buildDirectory.get()}/tmp/temp.zip"
+            val downloadPath = "${layout.buildDirectory.get()}/tmp/libogg-$oggVersion.tar.xz"
+            val unpackPath = "${layout.buildDirectory.get()}/tmp"
 
             downloadFile(
-                "https://downloads.xiph.org/releases/ogg/libogg-$oggVersion.zip",
-                downloadPath
+                "https://downloads.xiph.org/releases/ogg/libogg-$oggVersion.tar.xz",
+                downloadPath,
+                oggSha256
             )
 
-            copy {
-                from(zipTree(file(downloadPath)))
-                into("${layout.buildDirectory.get()}/tmp")
-            }
+            extractTarArchive(downloadPath, unpackPath)
 
             file("$projectDir/vorbis").mkdirs()
-            file("${layout.buildDirectory.get()}/tmp/libogg-$oggVersion")
+            file("$unpackPath/libogg-$oggVersion")
                 .renameTo(file("$projectDir/vorbis/libogg"))
         }
 
         if (!file("$projectDir/vorbis/libvorbis").exists()) {
-            val downloadPath = "${layout.buildDirectory.get()}/tmp/temp.zip"
+            val downloadPath = "${layout.buildDirectory.get()}/tmp/libvorbis-$vorbisVersion.tar.xz"
+            val unpackPath = "${layout.buildDirectory.get()}/tmp"
 
             downloadFile(
-                "https://downloads.xiph.org/releases/vorbis/libvorbis-$vorbisVersion.zip",
-                downloadPath
+                "https://downloads.xiph.org/releases/vorbis/libvorbis-$vorbisVersion.tar.xz",
+                downloadPath,
+                vorbisSha256
             )
 
-            copy {
-                from(zipTree(file(downloadPath)))
-                into("${layout.buildDirectory.get()}/tmp")
-            }
+            extractTarArchive(downloadPath, unpackPath)
 
             file("$projectDir/vorbis").mkdirs()
-            file("${layout.buildDirectory.get()}/tmp/libvorbis-$vorbisVersion")
+            file("$unpackPath/libvorbis-$vorbisVersion")
                 .renameTo(file("$projectDir/vorbis/libvorbis"))
         }
 
@@ -134,7 +158,8 @@ tasks.register("load") {
 
             downloadFile(
                 "https://downloads.xiph.org/releases/opus/opus-$opusVersion.tar.gz",
-                downloadPath
+                downloadPath,
+                opusSha256
             )
 
             copy {
@@ -152,7 +177,8 @@ tasks.register("load") {
 
             downloadFile(
                 "https://www.mpg123.de/download/mpg123-$mpg123Version.tar.bz2",
-                downloadPath
+                downloadPath,
+                mpg123Sha256
             )
 
             copy {

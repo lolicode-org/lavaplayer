@@ -1,58 +1,85 @@
 name: Build
+
 on:
     push:
         branches: ["**"]
+        tags: ["**"]
         paths-ignore: ["**.md"]
     workflow_call:
-        secrets:
-            MAVEN_USERNAME:
-                required: false
-            MAVEN_PASSWORD:
-                required: false
-            ORG_GRADLE_PROJECT_mavenCentralPassword:
-                required: false
-            ORG_GRADLE_PROJECT_mavenCentralUsername:
-                required: false
-            ORG_GRADLE_PROJECT_signingInMemoryKey:
-                required: false
-            ORG_GRADLE_PROJECT_signingInMemoryKeyPassword:
-                required: false
+
+permissions:
+    contents: read
+    packages: read
 
 jobs:
+    build-natives:
+        permissions:
+            contents: read
+        uses: ./.github/workflows/build-natives.yml
+
     build:
+        needs: build-natives
         runs-on: ubuntu-latest
-        env:
-            MAVEN_USERNAME: ${{ vars.MAVEN_USERNAME }}
-            MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
-            ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.ORG_GRADLE_PROJECT_MAVENCENTRALPASSWORD }}
-            ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.ORG_GRADLE_PROJECT_MAVENCENTRALUSERNAME }}
-            ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.ORG_GRADLE_PROJECT_SIGNINGINMEMORYKEY }}
-            ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.ORG_GRADLE_PROJECT_SIGNINGINMEMORYKEYPASSWORD }}
+        permissions:
+            contents: write
+            packages: write
         steps:
             - name: Checkout
               uses: actions/checkout@v6
               with:
                   fetch-depth: 0
 
+            - name: Download natives
+              uses: actions/download-artifact@v8
+              with:
+                  name: natives-resources
+                  path: main/build/embedded-natives
+
             - name: Setup Java
               uses: actions/setup-java@v5
               with:
                   distribution: zulu
-                  java-version: 11
+                  java-version: 17  # gradle 9 requires Java 17
                   cache: gradle
 
             - name: Setup Gradle
               uses: gradle/actions/setup-gradle@v6
+              with:
+                  cache-provider: 'basic'
 
-            - name: Build and Publish
-              run: ./gradlew build publish --no-daemon -PMAVEN_USERNAME=$MAVEN_USERNAME -PMAVEN_PASSWORD=$MAVEN_PASSWORD
+            - name: Build project
+              run: ./gradlew build
+
+            - name: Publish packages
+              if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}
+              env:
+                  GITHUB_PACKAGES_USERNAME: ${{ github.actor }}
+                  GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+              run: ./gradlew publish
+
+            - name: Publish GitHub Release
+              if: ${{ startsWith(github.ref, 'refs/tags/') }}
+              uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd
+              with:
+                  tag: ${{ github.ref_name }}
+                  name: ${{ github.ref_name }}
+                  artifacts: |
+                      main/build/libs/lavaplayer-*.jar
+                      common/build/libs/lava-common-*.jar
+                      extensions/format-xm/build/libs/lavaplayer-ext-format-xm-*.jar
+                  allowUpdates: false
+                  generateReleaseNotes: true
+                  omitBodyDuringUpdate: true
+                  omitDraftDuringUpdate: true
+                  omitNameDuringUpdate: true
+                  omitPrereleaseDuringUpdate: true
 
             - name: Upload Artifacts
               uses: actions/upload-artifact@v7
               with:
-                  name: Lavaplayer.zip
+                  name: lavaplayer-artifacts
                   path: |
                       main/build/libs/lavaplayer-*.jar
                       common/build/libs/lava-common-*.jar
                       extensions/format-xm/build/libs/lavaplayer-ext-format-xm-*.jar
-                      extensions/youtube-rotator/build/libs/lavaplayer-ext-youtube-rotator-*.jar

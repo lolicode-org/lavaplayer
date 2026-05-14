@@ -2,7 +2,7 @@
 #include <samplerate.h>
 #include <stdint.h>
 
-CONNECTOR_EXPORT jlong JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_samplerate_SampleRateLibrary_create(JNIEnv *jni, jobject me, jint type, jint channels, jintArray error_array) {
+CONNECTOR_EXPORT jlong JNICALL LAVA_JNI_NAME(_natives_samplerate_SampleRateLibrary_create)(JNIEnv *jni, jobject me, jint type, jint channels, jintArray error_array) {
 	int error = 0;
 	SRC_STATE* state = src_new(type, channels, &error);
 
@@ -12,15 +12,15 @@ CONNECTOR_EXPORT jlong JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_sam
 	return (jlong)(uintptr_t)state;
 }
 
-CONNECTOR_EXPORT void JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_samplerate_SampleRateLibrary_destroy(JNIEnv *jni, jobject me, jlong instance) {
+CONNECTOR_EXPORT void JNICALL LAVA_JNI_NAME(_natives_samplerate_SampleRateLibrary_destroy)(JNIEnv *jni, jobject me, jlong instance) {
 	src_delete((SRC_STATE*)(uintptr_t)instance);
 }
 
-CONNECTOR_EXPORT void JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_samplerate_SampleRateLibrary_reset(JNIEnv *jni, jobject me, jlong instance) {
+CONNECTOR_EXPORT void JNICALL LAVA_JNI_NAME(_natives_samplerate_SampleRateLibrary_reset)(JNIEnv *jni, jobject me, jlong instance) {
 	src_reset((SRC_STATE*)(uintptr_t)instance);
 }
 
-CONNECTOR_EXPORT jint JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_samplerate_SampleRateLibrary_process(JNIEnv *jni, jobject me, jlong instance,
+CONNECTOR_EXPORT jint JNICALL LAVA_JNI_NAME(_natives_samplerate_SampleRateLibrary_process)(JNIEnv *jni, jobject me, jlong instance,
 		jfloatArray in_array, jint in_offset, jint in_length, jfloatArray out_array, jint out_offset, jint out_length, jboolean end_of_input,
 		jdouble source_ratio, jintArray progress_array) {
 
