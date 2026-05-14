@@ -5,8 +5,13 @@ into a stream of Opus frames. It is designed for use with Discord bots, but it c
 output is required.
 
 > [!NOTE]
-> This is a fork of the original [Lavaplayer](https://github.com/sedmelluq/lavaplayer) with some additional
+> This is a fork of [Lavalink's Lavaplayer](https://github.com/lavalink-devs/lavaplayer)
+> which is a fork of the original [Lavaplayer](https://github.com/sedmelluq/lavaplayer) with some additional
 > features and fixes from [Walkyst's fork](https://github.com/Walkyst/lavaplayer-fork).
+>
+> I forked it to be able to publish it under a different group ID, and to use native libraries built from
+> source instead of precompiled ones. This should provide better transparency as well as support for windows arm64.
+> Credits: https://github.com/lavalink-devs/lavaplayer/pull/187 for the build scripts.
 
 > [!TIP]
 > **Please read the [FAQ](FAQ.md) in case of issues.**
@@ -14,27 +19,41 @@ output is required.
 > [!NOTE]
 > This fork requires Java 11 or newer. If you need Java 8 support you should update as java 8 was released 10 years ago.
 
+> [!NOTE]
+> This fork removes the legacy built-in YouTube source. If your application needs YouTube support, register an
+> external source manager separately.
+
 #### Maven package
 
-Replace `x.y.z` with the latest version
-number: [![Maven Central](https://img.shields.io/maven-central/v/dev.arbjerg/lavaplayer?versionPrefix=2)](https://central.sonatype.com/artifact/dev.arbjerg/lavaplayer)
+* Artifact: **org.lolicode:lavaplayer:x.y.z**
 
-* Repository: mavenCentral
-* Artifact: **dev.arbjerg:lavaplayer:x.y.z**
+CI publishes packages to GitHub Packages and mirrors them to the Codeberg Maven registry at
+`https://codeberg.org/api/packages/lolicode/maven`.
 
-Snapshots are published
-to https://maven.lavalink.dev/snapshots & https://s01.oss.sonatype.org/content/repositories/snapshots
+It's suggested to use the Codeberg registry as it does not require authentication for public packages.
+But if you want (for example in github actions) you can also use the Github Packages registry,
+which is also available at `https://maven.pkg.github.com/lolicode-org/lavaplayer`.
 
 Using in Gradle:
 
 ```gradle
 repositories {
-  mavenCentral()
-  maven { url "https://jitpack.io" } // For com.github.walkyst.JAADec-fork:jaadec-ext-aac & ibxm-fork:com.github.walkyst:ibxm-fork
+  maven {
+    url = uri("https://codeberg.org/api/packages/lolicode/maven")
+    content {
+      includeGroup("org.lolicode")
+    }
+  }
+  maven {
+    url = uri("https://jitpack.io")
+    content {
+      includeGroup("com.github.walkyst")
+    }
+  } // For com.github.walkyst:ibxm-fork
 }
 
 dependencies {
-  implementation 'dev.arbjerg:lavaplayer:x.y.z'
+  implementation 'org.lolicode:lavaplayer:x.y.z'
 }
 ```
 
@@ -42,15 +61,19 @@ Using in Maven:
 
 ```xml
 <repositories>
-    <repository>
-        <id>jitpack</id>
-        <url>https://jitpack.io</url>
-    </repository>
+  <repository>
+    <id>lolicode-org</id>
+    <url>https://codeberg.org/api/packages/lolicode/maven</url>
+  </repository>
+  <repository>
+    <id>jitpack</id>
+    <url>https://jitpack.io</url>
+  </repository>
 </repositories>
 
 <dependencies>
   <dependency>
-    <groupId>dev.arbjerg</groupId>
+    <groupId>org.lolicode</groupId>
     <artifactId>lavaplayer</artifactId>
     <version>x.y.z</version>
   </dependency>
@@ -62,7 +85,6 @@ Using in Maven:
 The set of sources where LavaPlayer can load tracks from is easily extensible, but the ones currently included by
 default are:
 
-* ~~YouTube~~ YouTube support is now provided by [youtube-source](https://github.com/lavalink-devs/youtube-source)
 * SoundCloud
 * Bandcamp
 * Vimeo
@@ -90,8 +112,6 @@ decoding and encoding steps altogether when the input format matches the output 
 
 * Memory usage is both predictable and low. The amount of memory used per track when testing with YouTube was at most
   350 kilobytes per track plus the off-heap memory for the thread stack, since there is one thread per playing track.
-* The most common format used in YouTube is Opus, which matches the exact output format required for Discord. When no
-  volume adjustment is applied, the packets from YouTube are directly passed to output, which saves CPU cycles.
 * Resource leaks are unlikely because there are no additional processes launched and only one thread per playing track.
   When an audio player is not queried for an user-configured amount of time, then the playing track is aborted and the
   thread cleaned up. This avoids thread leaks even when the audio player is not shut down as it is supposed to.
@@ -135,8 +155,16 @@ First thing you have to do when using the library is to create a `DefaultAudioPl
 use the settings and sources you want. Here is a sample:
 
 ```java
+NativeLibraryLoader.setDefaultExtractionPath(Path.of("path/to/your-app-data/lavaplayer-natives"));
+
 AudioPlayerManager playerManager = new DefaultAudioPlayerManager();
 AudioSourceManagers.registerRemoteSources(playerManager);
+```
+
+If you pre-extract or self-build the native binaries, you can point the loader at your own directory instead:
+
+```java
+NativeLibraryLoader.setDefaultLibraryDirectory(Path.of("path/to/your-app-data/lavaplayer-natives"));
 ```
 
 There are various configuration settings that can be modified:
@@ -181,8 +209,8 @@ which are the next things you have to obtain.
 
 To load a track, you have to call either the `loadItem` or `loadItemOrdered` method of
 an `AudioPlayerManager`. `loadItem` takes an identifier parameter and a load handler parameter. The identifier is a
-piece of text that should identify the track for some source. For example if it is a YouTube video ID, then YouTube
-source manager will load it, if it is a file path then the local file source will load it. The handler parameter is an
+piece of text that should identify the track for some source. For example a file path will be handled by the local file
+source, while a supported remote URL will be handled by the matching remote source manager. The handler parameter is an
 instance of `AudioLoadResultHandler`, which has separate methods for different results of the loading process. You can
 either have a dedicated class for this or you can simply pass it an anonymous class as in the next example:
 
@@ -213,10 +241,9 @@ playerManager.loadItem(identifier, new AudioLoadResultHandler() {
 ```
 
 Most of these methods are rather obvious. In addition to everything exploding, `loadFailed` will also be called for
-example when a YouTube track is blocked or not available in your area. The `FriendlyException` class has a field
-called `severity`. If the value of this is `COMMON`, then it means that the reason is definitely not a bug or a network
-issue, but because the track is not available, such as the YouTube blocked video example. These message in this case can
-simply be forwarded as is to the user.
+common user-facing failures such as region blocks, missing media, or unsupported remote responses. The
+`FriendlyException` class has a field called `severity`. If the value of this is `COMMON`, then it means that the
+reason is definitely not a bug or a network issue. These messages can usually be forwarded to the user as-is.
 
 The other method for loading tracks, `loadItemOrdered` is for cases where you want the tracks to be loaded in order for
 example within one player. `loadItemOrdered` takes an ordering channel key as the first parameter, which is simply any

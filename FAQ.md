@@ -28,7 +28,7 @@ This is just a wrapper exception around all other exceptions, check the full sta
 
 ### Everything triggers `noMatches`.
 
-Did you register source managers? For playing remote tracks (URLs including YouTube):
+Did you register source managers? For playing remote tracks:
 
 ```
 AudioSourceManagers.registerRemoteSources(playerManager);
@@ -40,10 +40,19 @@ For playing local tracks (files on disk):
 AudioSourceManagers.registerLocalSource(playerManager);
 ```
 
-### Sources are registered, but all YouTube tracks trigger `noMatches`.
+### Native libraries should not be extracted under the default temp directory.
 
-Make sure you do not convert the input you pass to `AudioPlayerManager#loadItem` to lowercase as YouTube URLs are
-case-sensitive.
+Configure a controlled location before any Lavaplayer native code is used:
+
+```java
+NativeLibraryLoader.setDefaultExtractionPath(Path.of("path/to/your-app-data/lavaplayer-natives"));
+```
+
+If you already ship the native binaries yourself, point Lavaplayer at that directory instead of using bundled extraction:
+
+```java
+NativeLibraryLoader.setDefaultLibraryDirectory(Path.of("path/to/your-app-data/lavaplayer-natives"));
+```
 
 ### Playback stutters
 
