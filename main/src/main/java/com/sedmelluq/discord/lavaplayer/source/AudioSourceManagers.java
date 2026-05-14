@@ -12,7 +12,6 @@ import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudAudioSourceM
 import com.sedmelluq.discord.lavaplayer.source.twitch.TwitchStreamAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.vimeo.VimeoAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.yamusic.YandexMusicAudioSourceManager;
-import com.sedmelluq.discord.lavaplayer.source.youtube.YoutubeAudioSourceManager;
 
 import java.util.Set;
 
@@ -35,7 +34,6 @@ public class AudioSourceManagers {
      * @param containerRegistry Media container registry to be used by any probing sources.
      */
     public static void registerRemoteSources(AudioPlayerManager playerManager, MediaContainerRegistry containerRegistry) {
-        playerManager.registerSourceManager(new YoutubeAudioSourceManager(true, null, null));
         playerManager.registerSourceManager(new YandexMusicAudioSourceManager(true));
         playerManager.registerSourceManager(SoundCloudAudioSourceManager.createDefault());
         playerManager.registerSourceManager(new BandcampAudioSourceManager());
@@ -70,9 +68,6 @@ public class AudioSourceManagers {
     @SafeVarargs
     public static void registerRemoteSources(AudioPlayerManager playerManager, MediaContainerRegistry containerRegistry, Class<? extends AudioSourceManager>... excludedSources) {
         var excluded = Set.of(excludedSources);
-        if (!excluded.contains(YoutubeAudioSourceManager.class)) {
-            playerManager.registerSourceManager(new YoutubeAudioSourceManager(true, null, null));
-        }
         if (!excluded.contains(YandexMusicAudioSourceManager.class)) {
             playerManager.registerSourceManager(new YandexMusicAudioSourceManager(true));
         }
