@@ -1,4 +1,4 @@
-#include <jni.h>
+#include "connector.h"
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -38,7 +38,7 @@ static void read_process_stats(jlong* process_user, jlong* process_kernel) {
 	}
 }
 
-JNIEXPORT void JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_statistics_CpuStatisticsLibrary_getSystemTimes(JNIEnv *jni, jobject me, jlongArray valueArray) {
+CONNECTOR_EXPORT void JNICALL LAVA_JNI_NAME(_natives_statistics_CpuStatisticsLibrary_getSystemTimes)(JNIEnv *jni, jobject me, jlongArray valueArray) {
 	FILE* stat_file = fopen("/proc/stat", "r");
 	int64_t user_time, nice_time, system_time, idle_time, iowait_time, irq_time, softirq_time, steal_time;
 	

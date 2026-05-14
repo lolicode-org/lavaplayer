@@ -20,7 +20,7 @@ import static java.nio.file.attribute.PosixFilePermissions.fromString;
 public class NativeLibraryLoader {
     private static final Logger log = LoggerFactory.getLogger(NativeLibraryLoader.class);
 
-    private static final String DEFAULT_PROPERTY_PREFIX = "lava.native.";
+    public static final String PROPERTY_PREFIX = "lava.native.";
     private static final String DEFAULT_RESOURCE_ROOT = "/natives/";
 
     private final String libraryName;
@@ -50,9 +50,62 @@ public class NativeLibraryLoader {
         return new NativeLibraryLoader(
             libraryName,
             systemFilter,
-            new SystemNativeLibraryProperties(libraryName, DEFAULT_PROPERTY_PREFIX),
+            new SystemNativeLibraryProperties(libraryName, PROPERTY_PREFIX),
             new ResourceNativeLibraryBinaryProvider(classLoaderSample, DEFAULT_RESOURCE_ROOT)
         );
+    }
+
+    /**
+     * Configure the default base directory where packaged native libraries are extracted before loading.
+     * This must be set before the relevant native library is loaded.
+     *
+     * @param extractionPath Directory under caller control for extracted native files.
+     */
+    public static void setDefaultExtractionPath(Path extractionPath) {
+        setPathProperty("extractPath", extractionPath);
+    }
+
+    /**
+     * Configure the extraction directory for a specific native library. This overrides the default extraction path.
+     * This must be set before the relevant native library is loaded.
+     *
+     * @param libraryName Native library name such as {@code connector}.
+     * @param extractionPath Directory under caller control for extracted native files.
+     */
+    public static void setExtractionPath(String libraryName, Path extractionPath) {
+        setPathProperty(libraryName + ".extractPath", extractionPath);
+    }
+
+    /**
+     * Configure the default directory to load native libraries from directly instead of extracting bundled resources.
+     * This must be set before the relevant native library is loaded.
+     *
+     * @param libraryDirectory Directory containing the native binaries for the current platform.
+     */
+    public static void setDefaultLibraryDirectory(Path libraryDirectory) {
+        setPathProperty("dir", libraryDirectory);
+    }
+
+    /**
+     * Configure a specific native library to load from a directory instead of extracting bundled resources.
+     * This must be set before the relevant native library is loaded.
+     *
+     * @param libraryName Native library name such as {@code connector}.
+     * @param libraryDirectory Directory containing the native binary for the current platform.
+     */
+    public static void setLibraryDirectory(String libraryName, Path libraryDirectory) {
+        setPathProperty(libraryName + ".dir", libraryDirectory);
+    }
+
+    /**
+     * Configure a specific native library to load from an explicit file path.
+     * This must be set before the relevant native library is loaded.
+     *
+     * @param libraryName Native library name such as {@code connector}.
+     * @param libraryPath Full path to the library binary.
+     */
+    public static void setLibraryPath(String libraryName, Path libraryPath) {
+        setPathProperty(libraryName + ".path", libraryPath);
     }
 
     public void load() {
@@ -135,23 +188,11 @@ public class NativeLibraryLoader {
     }
 
     private Path prepareExtractionDirectory() throws IOException {
-        Path extractionDirectory = detectExtractionBaseDirectory().resolve(String.valueOf(System.currentTimeMillis()));
+        Path baseDirectory = detectExtractionBaseDirectory();
+        createDirectoriesSecurely(baseDirectory);
 
-        if (!Files.isDirectory(extractionDirectory)) {
-            log.debug("Native library {}: extraction directory {} does not exist, creating.", libraryName,
-                extractionDirectory);
-
-            try {
-                createDirectoriesWithFullPermissions(extractionDirectory);
-            } catch (FileAlreadyExistsException ignored) {
-                // All is well
-            } catch (IOException e) {
-                throw new IOException("Failed to create directory for unpacked native library.", e);
-            }
-        } else {
-            log.debug("Native library {}: extraction directory {} already exists, using.", libraryName, extractionDirectory);
-        }
-
+        Path extractionDirectory = createPrivateTempDirectory(baseDirectory, libraryName + "-");
+        log.debug("Native library {}: created extraction directory {}.", libraryName, extractionDirectory);
         return extractionDirectory;
     }
 
@@ -177,7 +218,7 @@ public class NativeLibraryLoader {
             systemType = SystemType.detect(properties);
         } catch (IllegalArgumentException e) {
             if (systemFilter != null) {
-                log.info("Native library {}: could not detect sytem type, but system filter is {} - assuming it does " +
+                log.info("Native library {}: could not detect system type, but system filter is {} - assuming it does " +
                     "not match and skipping library.", libraryName, systemFilter);
 
                 return null;
@@ -195,14 +236,35 @@ public class NativeLibraryLoader {
         return systemType;
     }
 
-    private static void createDirectoriesWithFullPermissions(Path path) throws IOException {
+    private static Path createPrivateTempDirectory(Path baseDirectory, String prefix) throws IOException {
         boolean isPosix = FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
 
-        if (!isPosix) {
-            Files.createDirectories(path);
-        } else {
-            Files.createDirectories(path, asFileAttribute(fromString("rwxrwxrwx")));
+        if (isPosix) {
+            return Files.createTempDirectory(baseDirectory, prefix, asFileAttribute(fromString("rwx------")));
         }
+
+        return Files.createTempDirectory(baseDirectory, prefix);
+    }
+
+    private static void createDirectoriesSecurely(Path path) throws IOException {
+        if (Files.isDirectory(path)) {
+            return;
+        }
+
+        if (Files.exists(path)) {
+            throw new IOException("Native extraction base path is not a directory: " + path);
+        }
+
+        boolean isPosix = FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
+        if (isPosix) {
+            Files.createDirectories(path, asFileAttribute(fromString("rwx------")));
+        } else {
+            Files.createDirectories(path);
+        }
+    }
+
+    private static void setPathProperty(String propertyName, Path path) {
+        System.setProperty(PROPERTY_PREFIX + propertyName, path.toAbsolutePath().toString());
     }
 
     private static class LoadResult {

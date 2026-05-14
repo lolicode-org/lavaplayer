@@ -1,19 +1,47 @@
 @file:Suppress("UnstableApiUsage")
 
-import com.vanniktech.maven.publish.MavenPublishBaseExtension
-import com.vanniktech.maven.publish.SonatypeHost
-import org.ajoberstar.grgit.Grgit
+import org.gradle.api.credentials.HttpHeaderCredentials
+import org.gradle.authentication.http.HttpHeaderAuthentication
+import java.io.ByteArrayOutputStream
 
-plugins {
-    id("org.ajoberstar.grgit") version "5.2.0"
-    alias(libs.plugins.maven.publish.base) apply false
+data class PackageRelocation(
+    val from: String,
+    val to: String
+) {
+    val fromPath = from.replace('.', '/')
+    val toPath = to.replace('.', '/')
 }
+
+val packageRelocations = listOf(
+    PackageRelocation("com.sedmelluq.discord.lavaplayer", "org.lolicode.lavaplayer"),
+    PackageRelocation("com.sedmelluq.lava.common", "org.lolicode.lavaplayer.common"),
+    PackageRelocation("com.sedmelluq.lavaplayer.extensions", "org.lolicode.lavaplayer.extensions")
+)
+
+val publicationGroupId = "org.lolicode"
+
+fun relocatePackageText(text: String): String = packageRelocations.fold(text) { current, relocation ->
+    current
+        .replace(relocation.from, relocation.to)
+        .replace(relocation.fromPath, relocation.toPath)
+}
+
+fun relocatePackagePath(path: String): String = packageRelocations.fold(path) { current, relocation ->
+    current.replace(relocation.fromPath, relocation.toPath)
+}
+
+fun String.capitalized(): String = replaceFirstChar {
+    if (it.isLowerCase()) it.titlecase() else it.toString()
+}
+
+fun Project.firstNonBlank(vararg keys: String): String? = keys.asSequence()
+    .firstNotNullOfOrNull { key -> (findProperty(key)?.toString() ?: System.getenv(key))?.takeIf { it.isNotBlank() } }
 
 val (gitVersion, release) = versionFromGit()
 logger.lifecycle("Version: $gitVersion (release: $release)")
 
 allprojects {
-    group = "dev.arbjerg"
+    group = publicationGroupId
     version = gitVersion
 
     repositories {
@@ -24,77 +52,145 @@ allprojects {
 }
 
 subprojects {
-    if (project.name == "extensions-project") {
+    if (project.name == "extensions-project" || project.name == "natives") {
         return@subprojects
     }
 
     apply<JavaPlugin>()
-    apply<MavenPublishPlugin>()
+    apply(plugin = "maven-publish")
 
     configure<JavaPluginExtension> {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        withSourcesJar()
+        withJavadocJar()
+    }
+
+    val sourceSets = the<SourceSetContainer>()
+    listOf("main", "test").forEach { sourceSetName ->
+        val sourceDirectory = layout.projectDirectory.dir("src/$sourceSetName/java")
+        if (!sourceDirectory.asFile.exists()) {
+            return@forEach
+        }
+
+        val relocatedDirectory = layout.buildDirectory.dir("relocated-src/$sourceSetName/java")
+        val relocateTask = tasks.register<Copy>("relocate${sourceSetName.capitalized()}Sources") {
+            from(sourceDirectory)
+            into(relocatedDirectory)
+            include("**/*.java")
+            includeEmptyDirs = false
+            duplicatesStrategy = DuplicatesStrategy.FAIL
+            filteringCharset = "UTF-8"
+
+            eachFile {
+                relativePath = RelativePath(
+                    true,
+                    *relocatePackagePath(relativePath.pathString).split('/').toTypedArray()
+                )
+            }
+
+            filter { line: String -> relocatePackageText(line) }
+        }
+
+        sourceSets.named(sourceSetName) {
+            java.setSrcDirs(listOf(relocatedDirectory))
+        }
+
+        tasks.named(sourceSets.named(sourceSetName).get().compileJavaTaskName) {
+            dependsOn(relocateTask)
+        }
+
+        if (sourceSetName == "main") {
+            tasks.named("javadoc") {
+                dependsOn(relocateTask)
+            }
+
+            tasks.named("sourcesJar") {
+                dependsOn(relocateTask)
+            }
+        }
     }
 
     afterEvaluate {
-        plugins.withId(libs.plugins.maven.publish.base.get().pluginId) {
-            configure<PublishingExtension> {
-                val mavenUsername = findProperty("MAVEN_USERNAME") as String?
-                val mavenPassword = findProperty("MAVEN_PASSWORD") as String?
-                if (!mavenUsername.isNullOrEmpty() && !mavenPassword.isNullOrEmpty()) {
-                    repositories {
-                        val snapshots = "https://maven.lavalink.dev/snapshots"
-                        val releases = "https://maven.lavalink.dev/releases"
+        configure<PublishingExtension> {
+            publications {
+                register<MavenPublication>("mavenJava") {
+                    from(components["java"])
+                    artifactId = project.the<BasePluginExtension>().archivesName.get()
 
-                        maven(if (release) releases else snapshots) {
-                            credentials {
-                                username = mavenUsername
-                                password = mavenPassword
+                    pom {
+                        name = "lavaplayer"
+                        description = "Lavalink's lavaplayer forked by lolicode.org"
+                        url = "https://github.com/lolicode-org/lavaplayer"
+
+                        licenses {
+                            license {
+                                name = "The Apache License, Version 2.0"
+                                url = "https://github.com/lolicode-org/lavaplayer/blob/main/LICENSE"
                             }
                         }
+
+                        developers {
+                            developer {
+                                id = "freyacodes"
+                                name = "Freya Arbjerg"
+                                url = "https://www.arbjerg.dev"
+                            }
+                        }
+
+                        scm {
+                            url = "https://github.com/lolicode-org/lavaplayer/"
+                            connection = "scm:git:git://github.com/lolicode-org/lavaplayer.git"
+                            developerConnection = "scm:git:ssh://git@github.com/lolicode-org/lavaplayer.git"
+                        }
                     }
-                } else {
-                    logger.lifecycle("Not publishing to maven.lavalink.dev because credentials are not set")
                 }
             }
 
-            configure<MavenPublishBaseExtension> {
-                coordinates(group.toString(), project.the<BasePluginExtension>().archivesName.get(), version.toString())
-                val mavenCentralUsername = findProperty("mavenCentralUsername") as String?
-                val mavenCentralPassword = findProperty("mavenCentralPassword") as String?
-                if (!mavenCentralUsername.isNullOrEmpty() && !mavenCentralPassword.isNullOrEmpty()) {
-                    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL, false)
-                    if (release) {
-                        signAllPublications()
+            repositories {
+                val githubPackagesUsername = project.firstNonBlank(
+                    "githubPackagesUsername",
+                    "gpr.user",
+                    "GITHUB_PACKAGES_USERNAME",
+                    "GITHUB_ACTOR"
+                )
+                val githubPackagesToken = project.firstNonBlank(
+                    "githubPackagesToken",
+                    "gpr.key",
+                    "GITHUB_PACKAGES_TOKEN",
+                    "GITHUB_TOKEN"
+                )
+
+                if (githubPackagesUsername != null && githubPackagesToken != null) {
+                    maven {
+                        name = "GitHubPackages"
+                        url = uri("https://maven.pkg.github.com/lolicode-org/lavaplayer")
+
+                        credentials {
+                            username = githubPackagesUsername
+                            password = githubPackagesToken
+                        }
                     }
-                } else {
-                    logger.lifecycle("Not publishing to OSSRH due to missing credentials")
                 }
 
-                pom {
-                    name = "lavaplayer"
-                    description = "A Lavaplayer fork maintained by Lavalink"
-                    url = "https://github.com/lavalink-devs/lavaplayer"
+                val codebergToken = project.firstNonBlank(
+                    "codebergToken",
+                    "CODEBERG_TOKEN"
+                )
 
-                    licenses {
-                        license {
-                            name = "The Apache License, Version 2.0"
-                            url = "https://github.com/lavalink-devs/lavaplayer/blob/main/LICENSE"
+                if (codebergToken != null) {
+                    maven {
+                        name = "Codeberg"
+                        url = uri("https://codeberg.org/api/packages/lolicode/maven")
+
+                        credentials(HttpHeaderCredentials::class) {
+                            name = "Authorization"
+                            value = "token $codebergToken"
                         }
-                    }
 
-                    developers {
-                        developer {
-                            id = "freyacodes"
-                            name = "Freya Arbjerg"
-                            url = "https://www.arbjerg.dev"
+                        authentication {
+                            create<HttpHeaderAuthentication>("header")
                         }
-                    }
-
-                    scm {
-                        url = "https://github.com/lavalink-devs/lavaplayer/"
-                        connection = "scm:git:git://github.com/lavalink-devs/lavaplayer.git"
-                        developerConnection = "scm:git:ssh://git@github.com/lavalink-devs/lavaplayer.git"
                     }
                 }
             }
@@ -103,16 +199,41 @@ subprojects {
 }
 
 fun versionFromGit(): Pair<String, Boolean> {
-    Grgit.open(mapOf("currentDir" to project.rootDir)).use { git ->
-        val headTag = git.tag
-            .list()
-            .find { it.commit.id == git.head().id }
+    fun runGit(vararg args: String): String? {
+        return try {
+            val stdout = ByteArrayOutputStream()
+            val stderr = ByteArrayOutputStream()
+            val process = ProcessBuilder(listOf("git", *args))
+                .directory(rootDir)
+                .start()
 
-        val clean = git.status().isClean || System.getenv("CI") != null
-        if (!clean) {
-            logger.lifecycle("Git state is dirty, version is a snapshot.")
+            process.inputStream.use { it.copyTo(stdout) }
+            process.errorStream.use { it.copyTo(stderr) }
+
+            if (process.waitFor() == 0) {
+                stdout.toString().trim()
+            } else {
+                val errorSuffix = stderr.toString().trim().let { if (it.isEmpty()) "" else " ($it)" }
+                logger.info("Git command failed: git ${args.joinToString(" ")}$errorSuffix")
+                null
+            }
+        } catch (e: Exception) {
+            logger.info("Git command failed to start: git ${args.joinToString(" ")} (${e.message})")
+            null
         }
-
-        return if (headTag != null && clean) headTag.name to true else "${git.head().id}-SNAPSHOT" to false
     }
+
+    val headId = runGit("rev-parse", "HEAD")
+        ?: return "UNKNOWN-SNAPSHOT" to false
+
+    val headTag = runGit("tag", "--points-at", "HEAD")
+        ?.lineSequence()
+        ?.firstOrNull { it.isNotBlank() }
+
+    val clean = System.getenv("CI") != null || runGit("status", "--porcelain").isNullOrBlank()
+    if (!clean) {
+        logger.lifecycle("Git state is dirty, version is a snapshot.")
+    }
+
+    return if (headTag != null && clean) headTag to true else "${headId}-SNAPSHOT" to false
 }

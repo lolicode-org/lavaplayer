@@ -1,4 +1,4 @@
-#include <jni.h>
+#include "connector.h"
 #include <windows.h>
 
 enum {
@@ -9,7 +9,7 @@ enum {
 	PROCESS_KERNEL
 };
 
-JNIEXPORT void JNICALL Java_com_sedmelluq_discord_lavaplayer_natives_statistics_CpuStatisticsLibrary_getSystemTimes(JNIEnv *jni, jobject me, jlongArray valueArray) {
+CONNECTOR_EXPORT void JNICALL LAVA_JNI_NAME(_natives_statistics_CpuStatisticsLibrary_getSystemTimes)(JNIEnv *jni, jobject me, jlongArray valueArray) {
 	jlong values[5], idle;
 	FILETIME unused;
 

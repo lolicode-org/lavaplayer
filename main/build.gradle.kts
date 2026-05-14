@@ -1,22 +1,28 @@
-import com.vanniktech.maven.publish.JavaLibrary
-import com.vanniktech.maven.publish.JavadocJar
-import kotlin.io.path.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 
 plugins {
     `java-library`
-    alias(libs.plugins.maven.publish.base)
 }
 
 base {
     archivesName = "lavaplayer"
 }
 
+val generatedVersionResourcesDir = layout.buildDirectory.dir("generated-resources/version")
+val versionResourceFile = generatedVersionResourcesDir.map {
+    it.file("org/lolicode/lavaplayer/tools/version.txt")
+}
+
+sourceSets {
+    named("main") {
+        resources.srcDir(layout.buildDirectory.dir("embedded-natives"))
+        resources.srcDir(generatedVersionResourcesDir)
+    }
+}
+
 dependencies {
     api(projects.common)
-    implementation("dev.arbjerg:lavaplayer-natives:+")
-    implementation(libs.rhino.engine)
     implementation(libs.slf4j)
 
     api(libs.httpclient)
@@ -26,12 +32,12 @@ dependencies {
     api(libs.jackson.databind)
 
     implementation(libs.jsoup)
-    implementation(libs.base64)
     implementation(libs.json)
 
     implementation(libs.intellij.annotations)
 
     testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
     testImplementation(libs.logback.classic)
 }
 
@@ -44,23 +50,21 @@ tasks {
     }
 
     val updateVersion by registering {
-        val output = "$buildDir/resources/main/com/sedmelluq/discord/lavaplayer/tools/version.txt"
         inputs.property("version", version)
-        outputs.file(output)
+        outputs.file(versionResourceFile)
 
         doLast {
-            Path(output).let {
-                it.parent.createDirectories()
-                it.writeText(version.toString())
-            }
+            val output = versionResourceFile.get().asFile.toPath()
+            output.parent.createDirectories()
+            output.writeText(version.toString())
         }
     }
 
-    classes {
+    processResources {
         dependsOn(updateVersion)
     }
-}
 
-mavenPublishing {
-    configure(JavaLibrary(JavadocJar.Javadoc()))
+    sourcesJar {
+        dependsOn(updateVersion)
+    }
 }
