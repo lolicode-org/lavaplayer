@@ -48,6 +48,9 @@ Configure a controlled location before any Lavaplayer native code is used:
 NativeLibraryLoader.setDefaultExtractionPath(Path.of("path/to/your-app-data/lavaplayer-natives"));
 ```
 
+With an explicit extraction path, bundled natives are stored in a content-addressed cache and verified before loading.
+Without this setting, Lavaplayer still uses a private random subdirectory below the JVM temp directory.
+
 If you already ship the native binaries yourself, point Lavaplayer at that directory instead of using bundled extraction:
 
 ```java

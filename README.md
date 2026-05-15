@@ -161,6 +161,12 @@ AudioPlayerManager playerManager = new DefaultAudioPlayerManager();
 AudioSourceManagers.registerRemoteSources(playerManager);
 ```
 
+When an explicit extraction path is configured, bundled native libraries are extracted into a
+content-addressed cache below that directory. Lavaplayer hashes the exact native resource bytes at runtime, verifies
+existing cached files before loading them, and publishes newly extracted files with a lock-protected move that is atomic
+when the filesystem supports it. If no extraction path is configured, Lavaplayer keeps using a private random
+subdirectory below the JVM temp directory.
+
 If you pre-extract or self-build the native binaries, you can point the loader at your own directory instead:
 
 ```java

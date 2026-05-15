@@ -5,10 +5,18 @@ import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.*;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.function.Predicate;
 
 import static java.nio.file.attribute.PosixFilePermissions.asFileAttribute;
@@ -22,6 +30,8 @@ public class NativeLibraryLoader {
 
     public static final String PROPERTY_PREFIX = "lava.native.";
     private static final String DEFAULT_RESOURCE_ROOT = "/natives/";
+    private static final String HASH_ALGORITHM = "SHA-256";
+    private static final ConcurrentMap<Path, Object> cacheLocks = new ConcurrentHashMap<>();
 
     private final String libraryName;
     private final Predicate<SystemType> systemFilter;
@@ -57,6 +67,7 @@ public class NativeLibraryLoader {
 
     /**
      * Configure the default base directory where packaged native libraries are extracted before loading.
+     * Native resources extracted through an explicit extraction path are cached by content hash under this directory.
      * This must be set before the relevant native library is loaded.
      *
      * @param extractionPath Directory under caller control for extracted native files.
@@ -67,6 +78,7 @@ public class NativeLibraryLoader {
 
     /**
      * Configure the extraction directory for a specific native library. This overrides the default extraction path.
+     * Native resources extracted through an explicit extraction path are cached by content hash under this directory.
      * This must be set before the relevant native library is loaded.
      *
      * @param libraryName Native library name such as {@code connector}.
@@ -170,14 +182,32 @@ public class NativeLibraryLoader {
     }
 
     private Path extractLibraryFromResources(SystemType systemType) {
+        String explicitExtractionBase = properties.getExtractionPath();
+        Path baseDirectory = detectExtractionBaseDirectory(explicitExtractionBase);
+        String libraryFileName = systemType.formatLibraryName(libraryName);
+
         try (InputStream libraryStream = binaryProvider.getLibraryStream(systemType, libraryName)) {
             if (libraryStream == null) {
                 throw new UnsatisfiedLinkError("Required library was not found");
             }
 
-            Path extractedLibraryPath = prepareExtractionDirectory().resolve(systemType.formatLibraryName(libraryName));
+            if (explicitExtractionBase != null) {
+                return extractLibraryToContentAddressedCache(
+                    baseDirectory,
+                    systemType.formatSystemName(),
+                    libraryFileName,
+                    libraryName,
+                    libraryStream
+                );
+            }
 
-            try (FileOutputStream fileStream = new FileOutputStream(extractedLibraryPath.toFile())) {
+            Path extractedLibraryPath = prepareExtractionDirectory(baseDirectory).resolve(libraryFileName);
+
+            try (OutputStream fileStream = Files.newOutputStream(
+                extractedLibraryPath,
+                StandardOpenOption.CREATE_NEW,
+                StandardOpenOption.WRITE
+            )) {
                 IOUtils.copy(libraryStream, fileStream);
             }
 
@@ -187,8 +217,7 @@ public class NativeLibraryLoader {
         }
     }
 
-    private Path prepareExtractionDirectory() throws IOException {
-        Path baseDirectory = detectExtractionBaseDirectory();
+    private Path prepareExtractionDirectory(Path baseDirectory) throws IOException {
         createDirectoriesSecurely(baseDirectory);
 
         Path extractionDirectory = createPrivateTempDirectory(baseDirectory, libraryName + "-");
@@ -196,9 +225,7 @@ public class NativeLibraryLoader {
         return extractionDirectory;
     }
 
-    private Path detectExtractionBaseDirectory() {
-        String explicitExtractionBase = properties.getExtractionPath();
-
+    private Path detectExtractionBaseDirectory(String explicitExtractionBase) {
         if (explicitExtractionBase != null) {
             log.debug("Native library {}: explicit extraction path provided - {}", libraryName, explicitExtractionBase);
             return Paths.get(explicitExtractionBase).toAbsolutePath();
@@ -209,6 +236,60 @@ public class NativeLibraryLoader {
 
         log.debug("Native library {}: detected {} as base directory for extraction.", libraryName, path);
         return path;
+    }
+
+    static Path extractLibraryToContentAddressedCache(Path baseDirectory, String systemName, String libraryFileName,
+                                                      String libraryName, InputStream libraryStream) throws IOException {
+
+        createDirectoriesSecurely(baseDirectory);
+
+        Path libraryCacheDirectory = baseDirectory
+            .resolve(systemName)
+            .resolve(libraryFileName);
+        createDirectoriesSecurely(libraryCacheDirectory);
+
+        Path tempFile = createPrivateTempFile(libraryCacheDirectory, libraryName + "-", ".tmp");
+        String expectedHash;
+
+        try {
+            expectedHash = copyStreamToFileWithSha256(libraryStream, tempFile);
+        } catch (IOException | RuntimeException e) {
+            deleteFileIfExists(tempFile);
+            throw e;
+        }
+
+        Path hashDirectory = libraryCacheDirectory.resolve(expectedHash);
+        createDirectoriesSecurely(hashDirectory);
+
+        Path cachedFile = hashDirectory.resolve(libraryFileName);
+        Object jvmLock = cacheLocks.computeIfAbsent(cachedFile.toAbsolutePath().normalize(), key -> new Object());
+
+        synchronized (jvmLock) {
+            try (FileChannel lockChannel = FileChannel.open(
+                hashDirectory.resolve(".install.lock"),
+                StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE
+            ); FileLock ignored = acquireFileLock(lockChannel)) {
+
+                if (Files.exists(cachedFile)) {
+                    deleteFileIfExists(tempFile);
+                    verifyFileHash(cachedFile, expectedHash);
+                    return cachedFile;
+                }
+
+                moveTempFileToCache(tempFile, cachedFile);
+                try {
+                    verifyFileHash(cachedFile, expectedHash);
+                } catch (IOException | RuntimeException e) {
+                    deleteFileIfExists(cachedFile);
+                    throw e;
+                }
+                return cachedFile;
+            } catch (IOException | RuntimeException e) {
+                deleteFileIfExists(tempFile);
+                throw e;
+            }
+        }
     }
 
     private SystemType detectMatchingSystemType() {
@@ -246,6 +327,16 @@ public class NativeLibraryLoader {
         return Files.createTempDirectory(baseDirectory, prefix);
     }
 
+    private static Path createPrivateTempFile(Path directory, String prefix, String suffix) throws IOException {
+        boolean isPosix = FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
+
+        if (isPosix) {
+            return Files.createTempFile(directory, prefix, suffix, asFileAttribute(fromString("rw-------")));
+        }
+
+        return Files.createTempFile(directory, prefix, suffix);
+    }
+
     private static void createDirectoriesSecurely(Path path) throws IOException {
         if (Files.isDirectory(path)) {
             return;
@@ -260,6 +351,96 @@ public class NativeLibraryLoader {
             Files.createDirectories(path, asFileAttribute(fromString("rwx------")));
         } else {
             Files.createDirectories(path);
+        }
+    }
+
+    private static String copyStreamToFileWithSha256(InputStream input, Path output) throws IOException {
+        MessageDigest digest = sha256Digest();
+
+        try (DigestInputStream digestInput = new DigestInputStream(input, digest);
+             OutputStream fileStream = Files.newOutputStream(
+                 output,
+                 StandardOpenOption.TRUNCATE_EXISTING,
+                 StandardOpenOption.WRITE
+             )) {
+
+            IOUtils.copy(digestInput, fileStream);
+        }
+
+        return toHex(digest.digest());
+    }
+
+    private static void moveTempFileToCache(Path tempFile, Path cachedFile) throws IOException {
+        try {
+            Files.move(tempFile, cachedFile, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException ignored) {
+            Files.move(tempFile, cachedFile);
+        }
+    }
+
+    private static FileLock acquireFileLock(FileChannel channel) throws IOException {
+        while (true) {
+            try {
+                return channel.lock();
+            } catch (OverlappingFileLockException e) {
+                try {
+                    Thread.sleep(10L);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("Interrupted while waiting for native library cache lock.", interrupted);
+                }
+            }
+        }
+    }
+
+    private static void verifyFileHash(Path file, String expectedHash) throws IOException {
+        if (!Files.isRegularFile(file)) {
+            throw new IOException("Cached native library path is not a file: " + file);
+        }
+
+        String actualHash = hashFile(file);
+        if (!expectedHash.equals(actualHash)) {
+            throw new IOException("Cached native library hash mismatch for " + file +
+                ": expected " + expectedHash + ", got " + actualHash);
+        }
+    }
+
+    private static String hashFile(Path file) throws IOException {
+        MessageDigest digest = sha256Digest();
+
+        try (DigestInputStream digestInput = new DigestInputStream(Files.newInputStream(file), digest)) {
+            IOUtils.copy(digestInput, OutputStream.nullOutputStream());
+        }
+
+        return toHex(digest.digest());
+    }
+
+    private static MessageDigest sha256Digest() {
+        try {
+            return MessageDigest.getInstance(HASH_ALGORITHM);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(HASH_ALGORITHM + " digest is not available.", e);
+        }
+    }
+
+    private static String toHex(byte[] bytes) {
+        char[] result = new char[bytes.length * 2];
+        char[] digits = "0123456789abcdef".toCharArray();
+
+        for (int i = 0; i < bytes.length; i++) {
+            int value = bytes[i] & 0xff;
+            result[i * 2] = digits[value >>> 4];
+            result[i * 2 + 1] = digits[value & 0x0f];
+        }
+
+        return new String(result);
+    }
+
+    private static void deleteFileIfExists(Path path) {
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException e) {
+            log.debug("Failed to delete native library file {}.", path, e);
         }
     }
 
