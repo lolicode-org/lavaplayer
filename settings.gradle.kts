@@ -23,15 +23,30 @@ dependencyResolutionManagement {
 }
 
 fun VersionCatalogBuilder.common() {
-    library("slf4j", "org.slf4j", "slf4j-api").version("2.0.18")
-    library("commons-io", "commons-io", "commons-io").version("2.22.0")
+    version("slf4j") {
+        require("[2.0, 3.0[")
+        prefer("2.0.18")
+    }
+    library("slf4j", "org.slf4j", "slf4j-api").versionRef("slf4j")
+    version("commons-io") {
+        require("[2.0, 3.0[")
+        prefer("2.22.0")
+    }
+    library("commons-io", "commons-io", "commons-io").versionRef("commons-io")
     library("intellij-annotations", "org.jetbrains", "annotations").version("26.1.0")
 
-    version("jackson", "2.21.3")
+    version("jackson") {
+        require("[2.0, 3.0[")
+        prefer("2.21.3")
+    }
     library("jackson-core", "com.fasterxml.jackson.core", "jackson-core").versionRef("jackson")
     library("jackson-databind", "com.fasterxml.jackson.core", "jackson-databind").versionRef("jackson")
 
-    library("httpclient", "org.apache.httpcomponents", "httpclient").version("4.5.14")
+    version("httpclient") {
+        require("[4.0, 5.0[")
+        prefer("4.5.14")
+    }
+    library("httpclient", "org.apache.httpcomponents", "httpclient").versionRef("httpclient")
 
     library("jsoup", "org.jsoup", "jsoup").version("1.22.2")
     library("json", "org.json", "json").version("20251224")
