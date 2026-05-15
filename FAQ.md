@@ -50,6 +50,9 @@ NativeLibraryLoader.setDefaultExtractionPath(Path.of("path/to/your-app-data/lava
 
 With an explicit extraction path, bundled natives are stored in a content-addressed cache and verified before loading.
 Without this setting, Lavaplayer still uses a private random subdirectory below the JVM temp directory.
+If you need the historical random-subdirectory behavior under a custom base, use
+`NativeLibraryLoader.setDefaultExtractionPath(path, NativeLibraryLoader.ExtractionMode.PRIVATE_TEMP_DIRECTORY)` or
+`-Dlava.native.extractMode=private-temp-directory`.
 
 If you already ship the native binaries yourself, point Lavaplayer at that directory instead of using bundled extraction:
 

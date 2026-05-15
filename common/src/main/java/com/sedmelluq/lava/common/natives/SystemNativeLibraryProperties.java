@@ -25,6 +25,11 @@ public class SystemNativeLibraryProperties implements NativeLibraryProperties {
     }
 
     @Override
+    public String getExtractionMode() {
+        return get("extractMode");
+    }
+
+    @Override
     public String getSystemName() {
         return get("system");
     }

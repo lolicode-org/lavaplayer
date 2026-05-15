@@ -167,6 +167,19 @@ existing cached files before loading them, and publishes newly extracted files w
 when the filesystem supports it. If no extraction path is configured, Lavaplayer keeps using a private random
 subdirectory below the JVM temp directory.
 
+If your application may load Lavaplayer from multiple classloaders in the same JVM, keep the historical private
+subdirectory behavior while still avoiding the default temp directory:
+
+```java
+NativeLibraryLoader.setDefaultExtractionPath(
+    Path.of("path/to/your-app-data/lavaplayer-natives"),
+    NativeLibraryLoader.ExtractionMode.PRIVATE_TEMP_DIRECTORY
+);
+```
+
+The same mode can be selected with `-Dlava.native.extractMode=private-temp-directory`. Per-library overrides use
+`lava.native.<library>.extractMode`.
+
 If you pre-extract or self-build the native binaries, you can point the loader at your own directory instead:
 
 ```java
