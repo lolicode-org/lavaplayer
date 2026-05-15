@@ -15,6 +15,7 @@ import java.nio.file.*;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Predicate;
@@ -30,6 +31,7 @@ public class NativeLibraryLoader {
 
     public static final String PROPERTY_PREFIX = "lava.native.";
     private static final String DEFAULT_RESOURCE_ROOT = "/natives/";
+    private static final ExtractionMode DEFAULT_EXPLICIT_EXTRACTION_MODE = ExtractionMode.CONTENT_ADDRESSED_CACHE;
     private static final String HASH_ALGORITHM = "SHA-256";
     private static final ConcurrentMap<Path, Object> cacheLocks = new ConcurrentHashMap<>();
 
@@ -50,6 +52,52 @@ public class NativeLibraryLoader {
         this.lock = new Object();
     }
 
+    public enum ExtractionMode {
+        /**
+         * Store extracted native libraries by exact resource content hash below the extraction base.
+         * This allows safe reuse across JVM processes when a single application classloader owns native loading.
+         */
+        CONTENT_ADDRESSED_CACHE("content-addressed-cache"),
+
+        /**
+         * Always extract native libraries into a private random subdirectory below the extraction base.
+         * This preserves the historical behavior and is the safest choice for multi-classloader applications.
+         */
+        PRIVATE_TEMP_DIRECTORY("private-temp-directory");
+
+        private final String propertyValue;
+
+        ExtractionMode(String propertyValue) {
+            this.propertyValue = propertyValue;
+        }
+
+        public String propertyValue() {
+            return propertyValue;
+        }
+
+        private static ExtractionMode fromProperty(String value) {
+            String normalized = value.trim().toLowerCase(Locale.ROOT).replace('_', '-');
+
+            switch (normalized) {
+                case "content-addressed-cache":
+                case "content-addressable-cache":
+                case "content-cache":
+                case "cache":
+                    return CONTENT_ADDRESSED_CACHE;
+
+                case "private-temp-directory":
+                case "private-temp":
+                case "random-temp-directory":
+                case "random-temp":
+                case "temp":
+                    return PRIVATE_TEMP_DIRECTORY;
+
+                default:
+                    throw new IllegalArgumentException("Unknown native extraction mode: " + value);
+            }
+        }
+    }
+
     public static NativeLibraryLoader create(Class<?> classLoaderSample, String libraryName) {
         return createFiltered(classLoaderSample, libraryName, null);
     }
@@ -67,7 +115,8 @@ public class NativeLibraryLoader {
 
     /**
      * Configure the default base directory where packaged native libraries are extracted before loading.
-     * Native resources extracted through an explicit extraction path are cached by content hash under this directory.
+     * By default, native resources extracted through an explicit extraction path are cached by content hash under
+     * this directory. Use {@link #setDefaultExtractionPath(Path, ExtractionMode)} to select another mode.
      * This must be set before the relevant native library is loaded.
      *
      * @param extractionPath Directory under caller control for extracted native files.
@@ -77,8 +126,21 @@ public class NativeLibraryLoader {
     }
 
     /**
+     * Configure the default base directory and extraction mode for packaged native libraries.
+     * This must be set before the relevant native library is loaded.
+     *
+     * @param extractionPath Directory under caller control for extracted native files.
+     * @param extractionMode How bundled native resources should be extracted below the base directory.
+     */
+    public static void setDefaultExtractionPath(Path extractionPath, ExtractionMode extractionMode) {
+        setPathProperty("extractPath", extractionPath);
+        setStringProperty("extractMode", extractionMode.propertyValue());
+    }
+
+    /**
      * Configure the extraction directory for a specific native library. This overrides the default extraction path.
-     * Native resources extracted through an explicit extraction path are cached by content hash under this directory.
+     * By default, native resources extracted through an explicit extraction path are cached by content hash under
+     * this directory. Use {@link #setExtractionPath(String, Path, ExtractionMode)} to select another mode.
      * This must be set before the relevant native library is loaded.
      *
      * @param libraryName Native library name such as {@code connector}.
@@ -86,6 +148,20 @@ public class NativeLibraryLoader {
      */
     public static void setExtractionPath(String libraryName, Path extractionPath) {
         setPathProperty(libraryName + ".extractPath", extractionPath);
+    }
+
+    /**
+     * Configure the extraction directory and mode for a specific native library.
+     * This overrides the default extraction path and mode.
+     * This must be set before the relevant native library is loaded.
+     *
+     * @param libraryName Native library name such as {@code connector}.
+     * @param extractionPath Directory under caller control for extracted native files.
+     * @param extractionMode How bundled native resources should be extracted below the base directory.
+     */
+    public static void setExtractionPath(String libraryName, Path extractionPath, ExtractionMode extractionMode) {
+        setPathProperty(libraryName + ".extractPath", extractionPath);
+        setStringProperty(libraryName + ".extractMode", extractionMode.propertyValue());
     }
 
     /**
@@ -185,13 +261,16 @@ public class NativeLibraryLoader {
         String explicitExtractionBase = properties.getExtractionPath();
         Path baseDirectory = detectExtractionBaseDirectory(explicitExtractionBase);
         String libraryFileName = systemType.formatLibraryName(libraryName);
+        ExtractionMode extractionMode = explicitExtractionBase != null ?
+            detectExtractionMode(properties.getExtractionMode()) :
+            ExtractionMode.PRIVATE_TEMP_DIRECTORY;
 
         try (InputStream libraryStream = binaryProvider.getLibraryStream(systemType, libraryName)) {
             if (libraryStream == null) {
                 throw new UnsatisfiedLinkError("Required library was not found");
             }
 
-            if (explicitExtractionBase != null) {
+            if (extractionMode == ExtractionMode.CONTENT_ADDRESSED_CACHE) {
                 return extractLibraryToContentAddressedCache(
                     baseDirectory,
                     systemType.formatSystemName(),
@@ -236,6 +315,18 @@ public class NativeLibraryLoader {
 
         log.debug("Native library {}: detected {} as base directory for extraction.", libraryName, path);
         return path;
+    }
+
+    private ExtractionMode detectExtractionMode(String explicitExtractionMode) {
+        if (explicitExtractionMode == null) {
+            log.debug("Native library {}: using default extraction mode {}.", libraryName,
+                DEFAULT_EXPLICIT_EXTRACTION_MODE.propertyValue());
+            return DEFAULT_EXPLICIT_EXTRACTION_MODE;
+        }
+
+        ExtractionMode mode = ExtractionMode.fromProperty(explicitExtractionMode);
+        log.debug("Native library {}: explicit extraction mode provided - {}.", libraryName, mode.propertyValue());
+        return mode;
     }
 
     static Path extractLibraryToContentAddressedCache(Path baseDirectory, String systemName, String libraryFileName,
@@ -446,6 +537,10 @@ public class NativeLibraryLoader {
 
     private static void setPathProperty(String propertyName, Path path) {
         System.setProperty(PROPERTY_PREFIX + propertyName, path.toAbsolutePath().toString());
+    }
+
+    private static void setStringProperty(String propertyName, String value) {
+        System.setProperty(PROPERTY_PREFIX + propertyName, value);
     }
 
     private static class LoadResult {

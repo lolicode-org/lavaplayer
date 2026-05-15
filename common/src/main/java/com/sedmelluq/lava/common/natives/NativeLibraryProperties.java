@@ -22,12 +22,22 @@ public interface NativeLibraryProperties {
     /**
      * @return Base directory where to write the library if it is obtained through
      * {@link NativeLibraryBinaryProvider#getLibraryStream(SystemType, String)}. When this is set explicitly,
-     * the extracted library is cached by content hash below this directory and verified before it is loaded.
-     * The specified directory does not have to exist, but in that case the current process must have privileges
-     * to create it. If this returns <code>null</code>, then <code>{tmpDir}/lava-jni-natives</code> is used with
-     * a randomly generated per-load subdirectory.
+     * {@link #getExtractionMode()} controls whether the extracted library is cached by content hash below this
+     * directory or written to a randomly generated private subdirectory. The specified directory does not have to
+     * exist, but in that case the current process must have privileges to create it. If this returns
+     * <code>null</code>, then <code>{tmpDir}/lava-jni-natives</code> is used with a randomly generated per-load
+     * subdirectory.
      */
     String getExtractionPath();
+
+    /**
+     * @return Extraction mode to use when {@link #getExtractionPath()} is set. See
+     * {@link NativeLibraryLoader.ExtractionMode#propertyValue()} for supported system property values.
+     * Returning <code>null</code> uses the default explicit extraction mode.
+     */
+    default String getExtractionMode() {
+        return null;
+    }
 
     /**
      * @return System name. If this is set, no operating system or architecture detection is performed.

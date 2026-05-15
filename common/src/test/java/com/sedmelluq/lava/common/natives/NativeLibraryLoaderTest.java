@@ -79,6 +79,51 @@ class NativeLibraryLoaderTest {
         }
     }
 
+    @Test
+    void defaultExtractionPathCanRequestPrivateTempMode() {
+        withClearedNativeProperties(() -> {
+            Path extractionPath = tempDir.resolve("natives");
+
+            NativeLibraryLoader.setDefaultExtractionPath(
+                extractionPath,
+                NativeLibraryLoader.ExtractionMode.PRIVATE_TEMP_DIRECTORY
+            );
+
+            assertEquals(extractionPath.toAbsolutePath().toString(), System.getProperty("lava.native.extractPath"));
+            assertEquals("private-temp-directory", System.getProperty("lava.native.extractMode"));
+        });
+    }
+
+    @Test
+    void libraryExtractionPathCanRequestPrivateTempMode() {
+        withClearedNativeProperties(() -> {
+            Path extractionPath = tempDir.resolve("natives");
+
+            NativeLibraryLoader.setExtractionPath(
+                "connector",
+                extractionPath,
+                NativeLibraryLoader.ExtractionMode.PRIVATE_TEMP_DIRECTORY
+            );
+
+            assertEquals(
+                extractionPath.toAbsolutePath().toString(),
+                System.getProperty("lava.native.connector.extractPath")
+            );
+            assertEquals("private-temp-directory", System.getProperty("lava.native.connector.extractMode"));
+        });
+    }
+
+    @Test
+    void defaultExtractionPathDoesNotOverrideExistingModeProperty() {
+        withClearedNativeProperties(() -> {
+            System.setProperty("lava.native.extractMode", "private-temp-directory");
+
+            NativeLibraryLoader.setDefaultExtractionPath(tempDir.resolve("natives"));
+
+            assertEquals("private-temp-directory", System.getProperty("lava.native.extractMode"));
+        });
+    }
+
     private Path extract(byte[] nativeBytes) throws IOException {
         return NativeLibraryLoader.extractLibraryToContentAddressedCache(
             tempDir,
@@ -101,5 +146,32 @@ class NativeLibraryLoaderTest {
         }
 
         return new String(result);
+    }
+
+    private static void withClearedNativeProperties(Runnable action) {
+        String[] keys = {
+            "lava.native.extractPath",
+            "lava.native.extractMode",
+            "lava.native.connector.extractPath",
+            "lava.native.connector.extractMode"
+        };
+        String[] oldValues = new String[keys.length];
+
+        for (int i = 0; i < keys.length; i++) {
+            oldValues[i] = System.getProperty(keys[i]);
+            System.clearProperty(keys[i]);
+        }
+
+        try {
+            action.run();
+        } finally {
+            for (int i = 0; i < keys.length; i++) {
+                if (oldValues[i] == null) {
+                    System.clearProperty(keys[i]);
+                } else {
+                    System.setProperty(keys[i], oldValues[i]);
+                }
+            }
+        }
     }
 }
