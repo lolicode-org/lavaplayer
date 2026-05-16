@@ -14,6 +14,12 @@ on:
                 required: false
                 default: false
 
+            release:
+                description: 'Publish a release with this tag'
+                type: string
+                required: false
+                default: ''
+
 permissions:
     contents: read
     packages: read
@@ -79,8 +85,19 @@ jobs:
         runs-on: ubuntu-latest
         permissions:
             contents: write
-        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'workflow_dispatch' && inputs.release != '') }}
         steps:
+            - name: Get the tag name
+              id: get_tag
+              run: |
+                    if [ "${{ github.event_name }}" = "push" ]; then
+                        echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+                    elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+                        echo "TAG_NAME=${{ inputs.release }}" >> $GITHUB_ENV
+                    else
+                        echo "TAG_NAME=unknown" >> $GITHUB_ENV
+                    fi
+
             - name: Download build artifacts
               uses: actions/download-artifact@v8
               with:
@@ -90,5 +107,5 @@ jobs:
             - name: Publish GitHub Release
               uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda
               with:
-                  tag_name: ${{ github.ref_name }}
+                  tag_name: ${{ env.TAG_NAME }}
                   files: "release-artifacts/**/*.jar"
