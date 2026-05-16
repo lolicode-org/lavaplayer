@@ -4,7 +4,6 @@ import com.sedmelluq.discord.lavaplayer.container.MediaContainerDescriptor;
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.tools.Units;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterface;
-import com.sedmelluq.discord.lavaplayer.tools.io.PersistentHttpStream;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackInfo;
 import com.sedmelluq.discord.lavaplayer.track.DelegatedAudioTrack;
@@ -14,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
+import java.util.Map;
 
 /**
  * Audio track that handles processing HTTP addresses as audio tracks.
@@ -23,6 +23,7 @@ public class HttpAudioTrack extends DelegatedAudioTrack {
 
     private final MediaContainerDescriptor containerTrackFactory;
     private final HttpAudioSourceManager sourceManager;
+    private final Map<String, String> headers;
 
     /**
      * @param trackInfo             Track info
@@ -32,10 +33,23 @@ public class HttpAudioTrack extends DelegatedAudioTrack {
     public HttpAudioTrack(AudioTrackInfo trackInfo, MediaContainerDescriptor containerTrackFactory,
                           HttpAudioSourceManager sourceManager) {
 
+        this(trackInfo, containerTrackFactory, sourceManager, null);
+    }
+
+    /**
+     * @param trackInfo             Track info
+     * @param containerTrackFactory Container track factory - contains the probe with its parameters.
+     * @param sourceManager         Source manager used to load this track
+     * @param headers               Request headers to apply while playing this track
+     */
+    public HttpAudioTrack(AudioTrackInfo trackInfo, MediaContainerDescriptor containerTrackFactory,
+                          HttpAudioSourceManager sourceManager, Map<String, String> headers) {
+
         super(trackInfo);
 
         this.containerTrackFactory = containerTrackFactory;
         this.sourceManager = sourceManager;
+        this.headers = HttpAudioHeaders.normalize(headers);
     }
 
     /**
@@ -45,12 +59,21 @@ public class HttpAudioTrack extends DelegatedAudioTrack {
         return containerTrackFactory;
     }
 
+    /**
+     * @return Request headers applied while playing this track.
+     */
+    public Map<String, String> getHeaders() {
+        return headers;
+    }
+
     @Override
     public void process(LocalAudioTrackExecutor localExecutor) throws Exception {
         try (HttpInterface httpInterface = sourceManager.getHttpInterface()) {
             log.debug("Starting http track from URL: {}", trackInfo.identifier);
 
-            try (PersistentHttpStream inputStream = new PersistentHttpStream(httpInterface, new URI(trackInfo.identifier), Units.CONTENT_LENGTH_UNKNOWN)) {
+            try (HttpAudioStream inputStream = new HttpAudioStream(httpInterface, new URI(trackInfo.identifier),
+                Units.CONTENT_LENGTH_UNKNOWN, headers)) {
+
                 processDelegate((InternalAudioTrack) containerTrackFactory.createTrack(trackInfo, inputStream), localExecutor);
             }
         }
@@ -58,7 +81,7 @@ public class HttpAudioTrack extends DelegatedAudioTrack {
 
     @Override
     protected AudioTrack makeShallowClone() {
-        return new HttpAudioTrack(trackInfo, containerTrackFactory, sourceManager);
+        return new HttpAudioTrack(trackInfo, containerTrackFactory, sourceManager, headers);
     }
 
     @Override
