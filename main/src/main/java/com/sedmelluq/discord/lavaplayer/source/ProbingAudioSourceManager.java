@@ -46,14 +46,18 @@ public abstract class ProbingAudioSourceManager implements AudioSourceManager {
     protected abstract AudioTrack createTrack(AudioTrackInfo trackInfo, MediaContainerDescriptor containerTrackFactory);
 
     protected void encodeTrackFactory(MediaContainerDescriptor factory, DataOutput output) throws IOException {
-        String probeInfo = factory.probe.getName() + (factory.parameters != null ? PARAMETERS_SEPARATOR +
-            factory.parameters : "");
+        output.writeUTF(encodeTrackFactoryInfo(factory));
+    }
 
-        output.writeUTF(probeInfo);
+    protected String encodeTrackFactoryInfo(MediaContainerDescriptor factory) {
+        return factory.probe.getName() + (factory.parameters != null ? PARAMETERS_SEPARATOR + factory.parameters : "");
     }
 
     protected MediaContainerDescriptor decodeTrackFactory(DataInput input) throws IOException {
-        String probeInfo = input.readUTF();
+        return decodeTrackFactoryInfo(input.readUTF());
+    }
+
+    protected MediaContainerDescriptor decodeTrackFactoryInfo(String probeInfo) {
         int separatorPosition = probeInfo.indexOf(PARAMETERS_SEPARATOR);
 
         String probeName = separatorPosition < 0 ? probeInfo : probeInfo.substring(0, separatorPosition);
