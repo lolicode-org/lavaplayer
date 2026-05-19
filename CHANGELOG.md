@@ -1,5 +1,18 @@
 # Change Log
 
+## [2.3.0-beta.2] - 2026-05-16
+* Add support for per-track http header for HttpAudioSourceManager.
+* Added support for custom native library extraction locations.
+* Native libraries will be extracted once and cached, validated by a hash. This will be the default behavior, but can be disabled if needed.
+ * In the past, this library extract native libraries to a temp directory with a timestamped name, this brings the benefit that multiple instances will not conflict with each other.
+ * However, this also means that the libraries will be extracted every time, which can cause issues on some platforms and is generally not ideal, especially on linux where /tmp may not be allowed to be executed from.
+ * The new caching mechanism will extract the libraries once and reuse them, which should reduce issues with native library loading without introducing new conflicts in most cases.
+
+## [2.2.6.3] - 2026-05-15
+* Remove prebuilt native libraries from the repo, the ci will now build them from source.
+* Added support for windows arm64.
+* Lift version constraints for dependency versions.
+
 ## [2.2.6] - 2025-12-21
 * Fixed breaking change in `new SoundCloudAudioSourceManager` in https://github.com/lavalink-devs/lavaplayer/commit/0e67279600b8be62eebc2ab114934d24c6a0b54d
 
