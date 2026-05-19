@@ -47,6 +47,11 @@ fun VersionCatalogBuilder.common() {
         prefer("4.5.14")
     }
     library("httpclient", "org.apache.httpcomponents", "httpclient").versionRef("httpclient")
+    version("commons-codec") {
+        require("[1.0, 2.0[")
+        prefer("1.22.0")
+    }
+    library("commons-codec", "commons-codec", "commons-codec").versionRef("commons-codec")
 
     library("jsoup", "org.jsoup", "jsoup").version("1.22.2")
     library("json", "org.json", "json").version("20251224")

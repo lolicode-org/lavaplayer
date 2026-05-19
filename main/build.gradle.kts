@@ -27,6 +27,7 @@ dependencies {
 
     api(libs.httpclient)
     implementation(libs.commons.io)
+    implementation(libs.commons.codec)
 
     api(libs.jackson.core)
     api(libs.jackson.databind)
