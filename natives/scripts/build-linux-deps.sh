@@ -10,7 +10,7 @@
 #   cmake-toolchain-file  optional path to a CMake toolchain file for CMake-based libraries
 #
 # The script derives CC/AR/RANLIB/STRIP from the host triplet automatically unless they are already set.
-# Set CMAKE_EXTRA_ARGS to pass additional CMake arguments, for example Android ABI/platform settings.
+# Set CMAKE_EXTRA_ARGS to pass additional CMake arguments, one argument per line.
 # Outputs all static libraries (.a) to <repo-root>/natives/libs/64/
 #
 # Required env vars (set by CI or caller):
@@ -65,8 +65,9 @@ if [ -n "$TOOLCHAIN_FILE" ]; then
     CMAKE_PLATFORM_ARGS+=("-DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN_FILE")
 fi
 if [ -n "${CMAKE_EXTRA_ARGS:-}" ]; then
-    read -r -a CMAKE_EXTRA_ARGS_ARRAY <<< "$CMAKE_EXTRA_ARGS"
-    CMAKE_PLATFORM_ARGS+=("${CMAKE_EXTRA_ARGS_ARRAY[@]}")
+    while IFS= read -r cmake_arg || [ -n "$cmake_arg" ]; do
+        [ -n "$cmake_arg" ] && CMAKE_PLATFORM_ARGS+=("$cmake_arg")
+    done <<< "$CMAKE_EXTRA_ARGS"
 fi
 
 echo "==> CC=$CC  HOST=$CONFIGURE_HOST"
