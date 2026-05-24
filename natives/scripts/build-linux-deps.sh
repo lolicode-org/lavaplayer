@@ -7,9 +7,10 @@
 # Arguments:
 #   configure-host      autotools --host triplet, e.g. aarch64-linux-gnu
 #                       Use "native" to build without cross-compilation.
-#   cmake-toolchain-file  optional path to a CMake toolchain file for fdk-aac
+#   cmake-toolchain-file  optional path to a CMake toolchain file for CMake-based libraries
 #
-# The script derives CC/AR/RANLIB/STRIP from the host triplet automatically.
+# The script derives CC/AR/RANLIB/STRIP from the host triplet automatically unless they are already set.
+# Set CMAKE_EXTRA_ARGS to pass additional CMake arguments, for example Android ABI/platform settings.
 # Outputs all static libraries (.a) to <repo-root>/natives/libs/64/
 #
 # Required env vars (set by CI or caller):
@@ -55,9 +56,18 @@ fi
 
 export CC CXX AR RANLIB STRIP
 
-COMMON_FLAGS="-fPIC -O3 -fdata-sections -ffunction-sections"
-export CFLAGS="$COMMON_FLAGS"
-export CXXFLAGS="$COMMON_FLAGS"
+COMMON_FLAGS="${COMMON_FLAGS:--fPIC -O3 -fdata-sections -ffunction-sections}"
+export CFLAGS="${CFLAGS:-$COMMON_FLAGS}"
+export CXXFLAGS="${CXXFLAGS:-$COMMON_FLAGS}"
+
+CMAKE_PLATFORM_ARGS=()
+if [ -n "$TOOLCHAIN_FILE" ]; then
+    CMAKE_PLATFORM_ARGS+=("-DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN_FILE")
+fi
+if [ -n "${CMAKE_EXTRA_ARGS:-}" ]; then
+    read -r -a CMAKE_EXTRA_ARGS_ARRAY <<< "$CMAKE_EXTRA_ARGS"
+    CMAKE_PLATFORM_ARGS+=("${CMAKE_EXTRA_ARGS_ARRAY[@]}")
+fi
 
 echo "==> CC=$CC  HOST=$CONFIGURE_HOST"
 echo "==> LIBS_DIR=$LIBS_DIR"
@@ -144,15 +154,13 @@ if [ ! -f "$LIBS_DIR/libmpg123.a" ]; then
     MPG123_BUILD="$NATIVES_DIR/build/mpg123-build-${CONFIGURE_HOST//\//-}"
     mkdir -p "$MPG123_BUILD"
     pushd "$MPG123_BUILD"
-    TOOLCHAIN_ARGS=""
-    [ -n "$TOOLCHAIN_FILE" ] && TOOLCHAIN_ARGS="-DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN_FILE"
     cmake "$MPG123_SRC/ports/cmake" \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_SHARED_LIBS=OFF \
         -DBUILD_LIBOUT123=OFF \
         -DBUILD_PROGRAMS=OFF \
         -DCMAKE_C_FLAGS="$CFLAGS" \
-        $TOOLCHAIN_ARGS
+        "${CMAKE_PLATFORM_ARGS[@]}"
     cmake --build . -j"$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
     find . -name "libmpg123.a" -exec cp {} "$LIBS_DIR/" \;
     popd
@@ -167,14 +175,12 @@ if [ ! -f "$LIBS_DIR/libsamplerate.a" ]; then
     SAMPLERATE_BUILD="$NATIVES_DIR/build/samplerate-build-${CONFIGURE_HOST//\//-}"
     mkdir -p "$SAMPLERATE_BUILD"
     pushd "$SAMPLERATE_BUILD"
-    TOOLCHAIN_ARGS=""
-    [ -n "$TOOLCHAIN_FILE" ] && TOOLCHAIN_ARGS="-DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN_FILE"
     cmake "$SAMPLERATE_SRC" \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_SHARED_LIBS=OFF \
         -DCMAKE_C_FLAGS="$CFLAGS" \
         -DLIBSAMPLERATE_EXAMPLES=OFF \
-        $TOOLCHAIN_ARGS
+        "${CMAKE_PLATFORM_ARGS[@]}"
     cmake --build . -j"$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
     find . -name "libsamplerate.a" -exec cp {} "$LIBS_DIR/" \;
     popd
@@ -189,14 +195,12 @@ if [ ! -f "$LIBS_DIR/libfdk-aac.a" ]; then
     FDKAAC_BUILD="$NATIVES_DIR/build/fdk-aac-build-${CONFIGURE_HOST//\//-}"
     mkdir -p "$FDKAAC_BUILD"
     pushd "$FDKAAC_BUILD"
-    TOOLCHAIN_ARGS=""
-    [ -n "$TOOLCHAIN_FILE" ] && TOOLCHAIN_ARGS="-DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN_FILE"
     cmake "$FDKAAC_SRC" \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_SHARED_LIBS=OFF \
         -DCMAKE_C_FLAGS="$CFLAGS" \
         -DCMAKE_CXX_FLAGS="$CXXFLAGS" \
-        $TOOLCHAIN_ARGS
+        "${CMAKE_PLATFORM_ARGS[@]}"
     cmake --build . -j"$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
     find . -name "libfdk-aac.a" -exec cp {} "$LIBS_DIR/" \;
     popd

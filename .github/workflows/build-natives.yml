@@ -269,6 +269,120 @@ jobs:
                   path: natives/dist/${{ matrix.target }}/
                   if-no-files-found: error
 
+    build-android:
+        runs-on: ubuntu-latest
+        env:
+            ANDROID_NDK_VERSION: 27.3.13750724
+            ANDROID_API_LEVEL: 21
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - target: android-aarch64
+                      android_abi: arm64-v8a
+                      configure_host: aarch64-linux-android
+                      cc: aarch64-linux-android21-clang
+                      cxx: aarch64-linux-android21-clang++
+
+                    - target: android-armhf
+                      android_abi: armeabi-v7a
+                      configure_host: arm-linux-androideabi
+                      cc: armv7a-linux-androideabi21-clang
+                      cxx: armv7a-linux-androideabi21-clang++
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v6
+
+            - name: Cache dist output
+              if: inputs.skip-cache != true
+              id: dist-cache
+              uses: actions/cache@v5
+              with:
+                  path: natives/dist/${{ matrix.target }}
+                  key: natives-dist-v2-${{ matrix.target }}-${{ hashFiles('natives/**', '.github/workflows/build-natives.yml') }}
+
+            - name: Setup Java
+              if: steps.dist-cache.outputs.cache-hit != 'true'
+              uses: actions/setup-java@v5
+              with:
+                  distribution: zulu
+                  java-version: 17
+
+            - name: Setup Android SDK
+              if: steps.dist-cache.outputs.cache-hit != 'true'
+              uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+
+            - name: Install Android NDK
+              if: steps.dist-cache.outputs.cache-hit != 'true'
+              run: |
+                  yes | sdkmanager --install "ndk;${ANDROID_NDK_VERSION}"
+                  echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+
+            - name: Setup Gradle
+              if: steps.dist-cache.outputs.cache-hit != 'true'
+              uses: gradle/actions/setup-gradle@v6
+              with:
+                  cache-provider: 'basic'
+
+            - name: Download sources
+              if: steps.dist-cache.outputs.cache-hit != 'true'
+              run: ./gradlew :natives:load --no-daemon
+
+            - name: Build static dependencies
+              if: steps.dist-cache.outputs.cache-hit != 'true'
+              working-directory: natives
+              env:
+                  NATIVES_DIR: ${{ github.workspace }}/natives
+              run: |
+                  chmod +x scripts/build-linux-deps.sh
+                  TOOLCHAIN_BIN="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+                  export CC="${TOOLCHAIN_BIN}/${{ matrix.cc }}"
+                  export CXX="${TOOLCHAIN_BIN}/${{ matrix.cxx }}"
+                  export AR="${TOOLCHAIN_BIN}/llvm-ar"
+                  export RANLIB="${TOOLCHAIN_BIN}/llvm-ranlib"
+                  export STRIP="${TOOLCHAIN_BIN}/llvm-strip"
+                  export CMAKE_EXTRA_ARGS="-DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake -DANDROID_ABI=${{ matrix.android_abi }} -DANDROID_PLATFORM=android-${ANDROID_API_LEVEL}"
+                  scripts/build-linux-deps.sh "${{ matrix.configure_host }}" ""
+
+            - name: Build connector
+              if: steps.dist-cache.outputs.cache-hit != 'true'
+              working-directory: natives
+              run: |
+                  TARGET="${{ matrix.target }}"
+                  DIST_DIR="${{ github.workspace }}/natives/dist/${TARGET}"
+                  BUILD_DIR="${{ github.workspace }}/natives/build/${TARGET}"
+                  mkdir -p "$DIST_DIR" "$BUILD_DIR"
+                  cd "$BUILD_DIR"
+                  DIST_DIR="$DIST_DIR" cmake "${{ github.workspace }}/natives" \
+                      -DCMAKE_BUILD_TYPE=Release \
+                      -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
+                      -DANDROID_ABI="${{ matrix.android_abi }}" \
+                      -DANDROID_PLATFORM="android-${ANDROID_API_LEVEL}"
+                  DIST_DIR="$DIST_DIR" cmake --build . -j"$(nproc)"
+
+            - name: Validate Android linkage
+              if: steps.dist-cache.outputs.cache-hit != 'true'
+              working-directory: natives
+              run: |
+                  TARGET="${{ matrix.target }}"
+                  DIST_DIR="${{ github.workspace }}/natives/dist/${TARGET}"
+                  BUILD_DIR="${{ github.workspace }}/natives/build/${TARGET}"
+                  TOOLCHAIN_BIN="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+                  "${TOOLCHAIN_BIN}/llvm-readelf" -d "$DIST_DIR/libconnector.so" > "$BUILD_DIR/dynamic.txt"
+                  if grep -q "libc\\.so\\.6" "$BUILD_DIR/dynamic.txt"; then
+                      echo "Android native must not link against glibc libc.so.6"
+                      cat "$BUILD_DIR/dynamic.txt"
+                      exit 1
+                  fi
+                  grep -q "Shared library: \\[libc\\.so\\]" "$BUILD_DIR/dynamic.txt"
+
+            - name: Upload artifact
+              uses: actions/upload-artifact@v7
+              with:
+                  name: natives-${{ matrix.target }}
+                  path: natives/dist/${{ matrix.target }}/
+                  if-no-files-found: error
+
     build-darwin:
         strategy:
             fail-fast: false
@@ -568,7 +682,7 @@ jobs:
                   if-no-files-found: error
 
     package-natives:
-        needs: [build-linux, build-linux-musl, merge-darwin, build-windows]
+        needs: [build-linux, build-linux-musl, build-android, merge-darwin, build-windows]
         runs-on: ubuntu-latest
         steps:
             - name: Download all artifacts
