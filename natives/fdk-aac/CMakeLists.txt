@@ -26,6 +26,12 @@ endif()
 
 add_library(fdk-aac STATIC ${MAIN_SOURCES})
 
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Android")
+	file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/android-compat/log")
+	file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/android-compat/log/log.h" "#pragma once\n#include <android/log.h>\n")
+	target_include_directories(fdk-aac PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/android-compat")
+endif()
+
 if (NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 	# Upstream fdk-aac embeds __DATE__/__TIME__ in version metadata.
 	# Zig/Clang reports that via -Wdate-time, which becomes fatal under -Werror.
