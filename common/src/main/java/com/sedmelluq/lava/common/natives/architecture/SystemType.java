@@ -46,7 +46,7 @@ public class SystemType {
 
         String explicitArchitecture = properties.getArchitectureName();
         ArchitectureType architectureType = explicitArchitecture != null ? () -> explicitArchitecture :
-            DefaultArchitectureTypes.detect();
+            DefaultArchitectureTypes.detect(osType);
 
         return new SystemType(architectureType, osType);
     }
