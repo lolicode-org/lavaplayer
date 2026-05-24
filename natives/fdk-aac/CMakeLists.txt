@@ -28,7 +28,7 @@ add_library(fdk-aac STATIC ${MAIN_SOURCES})
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Android")
 	file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/android-compat/log")
-	file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/android-compat/log/log.h" "#pragma once\n#include <android/log.h>\n")
+	file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/android-compat/log/log.h" "#pragma once\n#include <android/log.h>\n#ifndef android_errorWriteLog\n#define android_errorWriteLog(tag, subTag) __android_log_print(ANDROID_LOG_ERROR, \"fdk-aac\", \"%x:%s\", tag, subTag)\n#endif\n")
 	target_include_directories(fdk-aac PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/android-compat")
 endif()
 
