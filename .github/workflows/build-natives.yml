@@ -341,7 +341,11 @@ jobs:
                   export AR="${TOOLCHAIN_BIN}/llvm-ar"
                   export RANLIB="${TOOLCHAIN_BIN}/llvm-ranlib"
                   export STRIP="${TOOLCHAIN_BIN}/llvm-strip"
-                  export CMAKE_EXTRA_ARGS="-DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake -DANDROID_ABI=${{ matrix.android_abi }} -DANDROID_PLATFORM=android-${ANDROID_API_LEVEL}"
+                  CMAKE_EXTRA_ARGS="$(printf '%s\n' \
+                      "-DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
+                      "-DANDROID_ABI=${{ matrix.android_abi }}" \
+                      "-DANDROID_PLATFORM=android-${ANDROID_API_LEVEL}")"
+                  export CMAKE_EXTRA_ARGS
                   scripts/build-linux-deps.sh "${{ matrix.configure_host }}" ""
 
             - name: Build connector
@@ -374,7 +378,11 @@ jobs:
                       cat "$BUILD_DIR/dynamic.txt"
                       exit 1
                   fi
-                  grep -q "Shared library: \\[libc\\.so\\]" "$BUILD_DIR/dynamic.txt"
+                  if ! grep -q "Shared library: \\[libc\\.so\\]" "$BUILD_DIR/dynamic.txt"; then
+                      echo "Android native must link against Android/Bionic libc.so"
+                      cat "$BUILD_DIR/dynamic.txt"
+                      exit 1
+                  fi
 
             - name: Upload artifact
               uses: actions/upload-artifact@v7
