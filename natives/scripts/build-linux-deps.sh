@@ -61,12 +61,27 @@ export CFLAGS="${CFLAGS:-$COMMON_FLAGS}"
 export CXXFLAGS="${CXXFLAGS:-$COMMON_FLAGS}"
 
 CMAKE_PLATFORM_ARGS=()
+CMAKE_PLATFORM_ARGS_COUNT=0
+
+append_cmake_platform_arg() {
+    CMAKE_PLATFORM_ARGS_COUNT=$((CMAKE_PLATFORM_ARGS_COUNT + 1))
+    CMAKE_PLATFORM_ARGS+=("$1")
+}
+
+cmake_with_platform_args() {
+    if [ "$CMAKE_PLATFORM_ARGS_COUNT" -gt 0 ]; then
+        cmake "$@" "${CMAKE_PLATFORM_ARGS[@]}"
+    else
+        cmake "$@"
+    fi
+}
+
 if [ -n "$TOOLCHAIN_FILE" ]; then
-    CMAKE_PLATFORM_ARGS+=("-DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN_FILE")
+    append_cmake_platform_arg "-DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN_FILE"
 fi
 if [ -n "${CMAKE_EXTRA_ARGS:-}" ]; then
     while IFS= read -r cmake_arg || [ -n "$cmake_arg" ]; do
-        [ -n "$cmake_arg" ] && CMAKE_PLATFORM_ARGS+=("$cmake_arg")
+        [ -n "$cmake_arg" ] && append_cmake_platform_arg "$cmake_arg"
     done <<< "$CMAKE_EXTRA_ARGS"
 fi
 
@@ -155,13 +170,12 @@ if [ ! -f "$LIBS_DIR/libmpg123.a" ]; then
     MPG123_BUILD="$NATIVES_DIR/build/mpg123-build-${CONFIGURE_HOST//\//-}"
     mkdir -p "$MPG123_BUILD"
     pushd "$MPG123_BUILD"
-    cmake "$MPG123_SRC/ports/cmake" \
+    cmake_with_platform_args "$MPG123_SRC/ports/cmake" \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_SHARED_LIBS=OFF \
         -DBUILD_LIBOUT123=OFF \
         -DBUILD_PROGRAMS=OFF \
-        -DCMAKE_C_FLAGS="$CFLAGS" \
-        "${CMAKE_PLATFORM_ARGS[@]}"
+        -DCMAKE_C_FLAGS="$CFLAGS"
     cmake --build . -j"$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
     find . -name "libmpg123.a" -exec cp {} "$LIBS_DIR/" \;
     popd
@@ -176,12 +190,11 @@ if [ ! -f "$LIBS_DIR/libsamplerate.a" ]; then
     SAMPLERATE_BUILD="$NATIVES_DIR/build/samplerate-build-${CONFIGURE_HOST//\//-}"
     mkdir -p "$SAMPLERATE_BUILD"
     pushd "$SAMPLERATE_BUILD"
-    cmake "$SAMPLERATE_SRC" \
+    cmake_with_platform_args "$SAMPLERATE_SRC" \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_SHARED_LIBS=OFF \
         -DCMAKE_C_FLAGS="$CFLAGS" \
-        -DLIBSAMPLERATE_EXAMPLES=OFF \
-        "${CMAKE_PLATFORM_ARGS[@]}"
+        -DLIBSAMPLERATE_EXAMPLES=OFF
     cmake --build . -j"$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
     find . -name "libsamplerate.a" -exec cp {} "$LIBS_DIR/" \;
     popd
@@ -196,12 +209,11 @@ if [ ! -f "$LIBS_DIR/libfdk-aac.a" ]; then
     FDKAAC_BUILD="$NATIVES_DIR/build/fdk-aac-build-${CONFIGURE_HOST//\//-}"
     mkdir -p "$FDKAAC_BUILD"
     pushd "$FDKAAC_BUILD"
-    cmake "$FDKAAC_SRC" \
+    cmake_with_platform_args "$FDKAAC_SRC" \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_SHARED_LIBS=OFF \
         -DCMAKE_C_FLAGS="$CFLAGS" \
-        -DCMAKE_CXX_FLAGS="$CXXFLAGS" \
-        "${CMAKE_PLATFORM_ARGS[@]}"
+        -DCMAKE_CXX_FLAGS="$CXXFLAGS"
     cmake --build . -j"$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
     find . -name "libfdk-aac.a" -exec cp {} "$LIBS_DIR/" \;
     popd

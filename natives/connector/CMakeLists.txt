@@ -76,6 +76,8 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 	set_target_properties(connector PROPERTIES PREFIX "")
 	# mpg123 uses PathIsRelativeW/PathIsUNCW/PathCombineW from shlwapi.dll
 	target_link_libraries(connector samplerate fdk-aac vorbis ogg opus mpg123 shlwapi)
+elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Android")
+	target_link_libraries(connector samplerate fdk-aac vorbis ogg opus mpg123 log)
 else()
 	target_link_libraries(connector samplerate fdk-aac vorbis ogg opus mpg123)
 endif()
