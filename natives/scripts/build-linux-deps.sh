@@ -127,6 +127,15 @@ if [ ! -f "$LIBS_DIR/libvorbis.a" ]; then
         --with-ogg="$OGG_INSTALL" \
         CFLAGS="$CFLAGS" \
         LDFLAGS="-L$OGG_INSTALL/lib"
+    # Android x86 target's clang doesn't support it
+    if ! "$CC" -x c -c /dev/null -mno-ieee-fp -o "$NATIVES_DIR/build/mno-ieee-fp-test-${CONFIGURE_HOST//\//-}.o" >/dev/null 2>&1; then
+        sed 's/=-mno-ieee-fp[[:space:]]*/=/g; s/[[:space:]]-mno-ieee-fp//g; s/^-mno-ieee-fp[[:space:]]*//g' lib/Makefile > lib/Makefile.tmp
+        mv lib/Makefile.tmp lib/Makefile
+    fi
+    if [ "$CONFIGURE_HOST" = "i686-linux-android" ]; then
+        sed '/^#define size_t /d' config.h > config.h.tmp
+        mv config.h.tmp config.h
+    fi
     # Build libvorbis.la explicitly to skip noinst_PROGRAMS (test_sharedbook)
     # which fails on macOS with newer Xcode (-force_cpusubtype_ALL removed in ld)
     make -C lib libvorbis.la -j"$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
