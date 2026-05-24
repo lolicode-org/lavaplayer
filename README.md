@@ -193,6 +193,8 @@ NativeLibraryLoader.setDefaultLibraryDirectory(Path.of("path/to/your-app-data/la
 Android Java environments such as Termux are handled as separate Bionic targets, not as normal Linux. Bundled native
 resources use `android-aarch64` and `android-armhf`; if automatic detection is not available in a launcher, force the
 target with `-Dlava.native.system=android-aarch64` or `-Dlava.native.system=android-armhf`.
+resources use `android-aarch64`, `android-armhf`, `android-x86`, and `android-x86-64`; if automatic detection is not
+available in a launcher, force the target with `-Dlava.native.system=<target>`.
 
 There are various configuration settings that can be modified:
 

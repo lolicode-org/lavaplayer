@@ -31,6 +31,22 @@ class DefaultArchitectureTypesTest {
     }
 
     @Test
+    void androidX86UsesX86Target() {
+        assertEquals(
+            DefaultArchitectureTypes.X86_32,
+            DefaultArchitectureTypes.detect("x86", DefaultOperatingSystemTypes.ANDROID)
+        );
+    }
+
+    @Test
+    void androidX86_64UsesX86_64Target() {
+        assertEquals(
+            DefaultArchitectureTypes.X86_64,
+            DefaultArchitectureTypes.detect("x86_64", DefaultOperatingSystemTypes.ANDROID)
+        );
+    }
+
+    @Test
     void androidSystemNamesUseAndroidPrefix() {
         assertEquals(
             "android-armhf",
@@ -39,6 +55,14 @@ class DefaultArchitectureTypesTest {
         assertEquals(
             "android-aarch64",
             new SystemType(DefaultArchitectureTypes.ARMv8_64, DefaultOperatingSystemTypes.ANDROID).formatSystemName()
+        );
+        assertEquals(
+            "android-x86",
+            new SystemType(DefaultArchitectureTypes.X86_32, DefaultOperatingSystemTypes.ANDROID).formatSystemName()
+        );
+        assertEquals(
+            "android-x86-64",
+            new SystemType(DefaultArchitectureTypes.X86_64, DefaultOperatingSystemTypes.ANDROID).formatSystemName()
         );
     }
 }
