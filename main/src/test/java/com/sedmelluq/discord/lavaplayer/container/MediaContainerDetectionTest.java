@@ -1,16 +1,14 @@
 package com.sedmelluq.discord.lavaplayer.container;
 
+import com.sedmelluq.discord.lavaplayer.tools.io.ByteArraySeekableInputStream;
 import com.sedmelluq.discord.lavaplayer.tools.io.SeekableInputStream;
 import com.sedmelluq.discord.lavaplayer.track.AudioReference;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackInfo;
-import com.sedmelluq.discord.lavaplayer.track.info.AudioTrackInfoProvider;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
 
 import static com.sedmelluq.discord.lavaplayer.container.MediaContainerDetection.checkNextBytes;
 import static com.sedmelluq.discord.lavaplayer.container.MediaContainerDetectionResult.supportedFormat;
@@ -122,53 +120,6 @@ class MediaContainerDetectionTest {
         @Override
         public AudioTrack createTrack(String parameters, AudioTrackInfo trackInfo, SeekableInputStream inputStream) {
             return null;
-        }
-    }
-
-    private static final class ByteArraySeekableInputStream extends SeekableInputStream {
-        private final byte[] data;
-        private int position;
-
-        private ByteArraySeekableInputStream(byte[] data) {
-            super(data.length, 0);
-            this.data = data;
-        }
-
-        @Override
-        public long getPosition() {
-            return position;
-        }
-
-        @Override
-        protected void seekHard(long position) {
-            this.position = (int) position;
-        }
-
-        @Override
-        public boolean canSeekHard() {
-            return true;
-        }
-
-        @Override
-        public List<AudioTrackInfoProvider> getTrackInfoProviders() {
-            return Collections.emptyList();
-        }
-
-        @Override
-        public int read() {
-            return position < data.length ? data[position++] & 0xFF : -1;
-        }
-
-        @Override
-        public int read(byte[] b, int off, int len) {
-            if (position >= data.length) {
-                return -1;
-            }
-
-            int count = Math.min(len, data.length - position);
-            System.arraycopy(data, position, b, off, count);
-            position += count;
-            return count;
         }
     }
 }

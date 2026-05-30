@@ -29,6 +29,11 @@ public class Mp3TrackProvider implements AudioTrackInfoProvider {
     private static final byte[] IDV3_TAG = new byte[]{0x49, 0x44, 0x33};
     private static final int IDV3_FLAG_EXTENDED = 0x40;
 
+    // Maximum number of bytes to scan for the first MP3 frame after the ID3 tags. Some encoders/taggers leave padding or
+    // junk between the declared end of the ID3v2 tag and the first frame,
+    // so this is kept well above any realistic gap to avoid spuriously rejecting valid MP3 files.
+    private static final int FIRST_FRAME_SCAN_DISTANCE = 32768;
+
     private static final String TITLE_TAG = "TIT2";
     private static final String ARTIST_TAG = "TPE1";
     private static final String ISRC_TAG = "TSRC";
@@ -77,7 +82,7 @@ public class Mp3TrackProvider implements AudioTrackInfoProvider {
     public void parseHeaders() throws IOException {
         skipIdv3Tags();
 
-        if (!frameReader.scanForFrame(2048, true)) {
+        if (!frameReader.scanForFrame(FIRST_FRAME_SCAN_DISTANCE, true)) {
             throw new IllegalStateException("File ended before the first frame was found.");
         }
 
