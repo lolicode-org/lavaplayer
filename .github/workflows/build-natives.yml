@@ -24,6 +24,10 @@ concurrency:
 jobs:
     build-linux:
         runs-on: ubuntu-latest
+        env:
+            CCACHE: ccache
+            CMAKE_C_COMPILER_LAUNCHER: ccache
+            CMAKE_CXX_COMPILER_LAUNCHER: ccache
         strategy:
             fail-fast: false
             matrix:
@@ -93,6 +97,13 @@ jobs:
               if: steps.dist-cache.outputs.cache-hit != 'true'
               run: ./gradlew :natives:load --no-daemon
 
+            - name: Setup ccache
+              if: steps.dist-cache.outputs.cache-hit != 'true'
+              uses: hendrikmuhs/ccache-action@v1.2.23  # It's immutable so using tag should be okay
+              with:
+                  key: ccache-${{ matrix.target }}
+                  max-size: 500M
+
             - name: Build static dependencies
               if: steps.dist-cache.outputs.cache-hit != 'true'
               working-directory: natives
@@ -136,6 +147,10 @@ jobs:
 
     build-linux-musl:
         runs-on: ubuntu-latest
+        env:
+            CCACHE: ccache
+            CMAKE_C_COMPILER_LAUNCHER: ccache
+            CMAKE_CXX_COMPILER_LAUNCHER: ccache
         strategy:
             fail-fast: false
             matrix:
@@ -219,6 +234,13 @@ jobs:
               if: steps.dist-cache.outputs.cache-hit != 'true'
               run: ./gradlew :natives:load --no-daemon
 
+            - name: Setup ccache
+              if: steps.dist-cache.outputs.cache-hit != 'true'
+              uses: hendrikmuhs/ccache-action@v1.2.23
+              with:
+                  key: ccache-${{ matrix.target }}
+                  max-size: 500M
+
             - name: Set CC for musl-aarch64
               if: steps.dist-cache.outputs.cache-hit != 'true' && matrix.target == 'linux-musl-aarch64'
               run: |
@@ -274,6 +296,9 @@ jobs:
         env:
             ANDROID_NDK_VERSION: 27.3.13750724
             ANDROID_API_LEVEL: 21
+            CCACHE: ccache
+            CMAKE_C_COMPILER_LAUNCHER: ccache
+            CMAKE_CXX_COMPILER_LAUNCHER: ccache
         strategy:
             fail-fast: false
             matrix:
@@ -339,6 +364,13 @@ jobs:
             - name: Download sources
               if: steps.dist-cache.outputs.cache-hit != 'true'
               run: ./gradlew :natives:load --no-daemon
+
+            - name: Setup ccache
+              if: steps.dist-cache.outputs.cache-hit != 'true'
+              uses: hendrikmuhs/ccache-action@v1.2.23
+              with:
+                  key: ccache-${{ matrix.target }}
+                  max-size: 500M
 
             - name: Build static dependencies
               if: steps.dist-cache.outputs.cache-hit != 'true'
@@ -413,6 +445,10 @@ jobs:
                     - target: darwin-aarch64
                       runner: macos-26
         runs-on: ${{ matrix.runner }}
+        env:
+            CCACHE: ccache
+            CMAKE_C_COMPILER_LAUNCHER: ccache
+            CMAKE_CXX_COMPILER_LAUNCHER: ccache
         steps:
             - name: Checkout
               uses: actions/checkout@v6
@@ -441,6 +477,13 @@ jobs:
             - name: Download sources
               if: steps.dist-cache.outputs.cache-hit != 'true'
               run: ./gradlew :natives:load --no-daemon
+
+            - name: Setup ccache
+              if: steps.dist-cache.outputs.cache-hit != 'true'
+              uses: hendrikmuhs/ccache-action@v1.2.23
+              with:
+                  key: ccache-${{ matrix.target }}
+                  max-size: 500M
 
             - name: Build static dependencies
               if: steps.dist-cache.outputs.cache-hit != 'true'
