@@ -60,6 +60,18 @@ COMMON_FLAGS="${COMMON_FLAGS:--fPIC -O3 -fdata-sections -ffunction-sections}"
 export CFLAGS="${CFLAGS:-$COMMON_FLAGS}"
 export CXXFLAGS="${CXXFLAGS:-$COMMON_FLAGS}"
 
+# ---------------------------------------------------------------------------
+# Optional ccache support
+# ---------------------------------------------------------------------------
+# When CCACHE is set (e.g. CCACHE=ccache), route the autotools-based libraries
+# through it via wrapped CC/CXX. CMake-based libraries and the connector pick
+# ccache up automatically through the CMAKE_<LANG>_COMPILER_LAUNCHER environment
+# variables (honored by CMake >= 3.17), so they need no special handling here.
+# The bare CC/CXX above are kept intact for the compiler capability probe below.
+CCACHE="${CCACHE:-}"
+CONFIGURE_CC="${CCACHE:+$CCACHE }$CC"
+CONFIGURE_CXX="${CCACHE:+$CCACHE }$CXX"
+
 CMAKE_PLATFORM_ARGS=()
 CMAKE_PLATFORM_ARGS_COUNT=0
 
@@ -102,6 +114,7 @@ if [ ! -f "$OGG_INSTALL/lib/libogg.la" ]; then
         --disable-maintainer-mode \
         --prefix="$OGG_INSTALL" \
         $HOST_FLAG \
+        CC="$CONFIGURE_CC" \
         CFLAGS="$CFLAGS"
     make -j"$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
     make install
@@ -125,6 +138,7 @@ if [ ! -f "$LIBS_DIR/libvorbis.a" ]; then
         --disable-maintainer-mode \
         $HOST_FLAG \
         --with-ogg="$OGG_INSTALL" \
+        CC="$CONFIGURE_CC" \
         CFLAGS="$CFLAGS" \
         LDFLAGS="-L$OGG_INSTALL/lib"
     # Android x86 target's clang doesn't support it
@@ -160,6 +174,7 @@ if [ ! -f "$LIBS_DIR/libopus.a" ]; then
         --disable-maintainer-mode \
         $HOST_FLAG \
         $OPUS_EXTRA_FLAGS \
+        CC="$CONFIGURE_CC" CXX="$CONFIGURE_CXX" \
         CFLAGS="$CFLAGS" CXXFLAGS="$CXXFLAGS"
     make clean
     make -j"$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
