@@ -188,25 +188,47 @@ public class HttpAudioSourceManager extends ProbingAudioSourceManager implements
     }
 
     private MediaContainerDetectionResult detectContainerWithClient(HttpInterface httpInterface, HttpAudioReference reference) throws IOException {
-        try (HttpAudioStream inputStream = new HttpAudioStream(httpInterface, new URI(reference.identifier),
-            Units.CONTENT_LENGTH_UNKNOWN, reference.headers)) {
+        try {
+            URI uri = new URI(reference.identifier);
 
-            int statusCode = inputStream.checkStatusCode();
-            String redirectUrl = HttpClientTools.getRedirectLocation(reference.identifier, inputStream.getCurrentResponse());
+            try (HttpAudioStream inputStream = new HttpAudioStream(httpInterface, uri,
+                Units.CONTENT_LENGTH_UNKNOWN, reference.headers)) {
 
-            if (redirectUrl != null) {
-                return refer(null, new HttpAudioReference(redirectUrl, null, reference.headers));
-            } else if (statusCode == HttpStatus.SC_NOT_FOUND) {
-                return null;
-            } else if (!HttpClientTools.isSuccessWithContent(statusCode)) {
-                throw new FriendlyException("That URL is not playable.", COMMON, new IllegalStateException("Status code " + statusCode));
+                int statusCode = inputStream.checkStatusCode();
+                String redirectUrl = HttpClientTools.getRedirectLocation(reference.identifier, inputStream.getCurrentResponse());
+
+                if (redirectUrl != null) {
+                    return refer(null, new HttpAudioReference(redirectUrl, null, reference.headers));
+                } else if (statusCode == HttpStatus.SC_NOT_FOUND) {
+                    return null;
+                } else if (!HttpClientTools.isSuccessWithContent(statusCode)) {
+                    throw new FriendlyException("That URL is not playable.", COMMON, new IllegalStateException("Status code " + statusCode));
+                }
+
+                // The file extension is derived from the URL in addition to the Content-Type header, because some servers
+                // report an incorrect Content-Type (e.g. audio/mpeg for a FLAC file). Without the extension hint, a content
+                // sniffing probe such as MP3 could match the hint and run before the format's actual magic bytes are checked.
+                MediaContainerHints hints = MediaContainerHints.from(
+                    getHeaderValue(inputStream.getCurrentResponse(), "Content-Type"), getUriFileExtension(uri));
+                return new MediaContainerDetection(containerRegistry, reference, inputStream, hints).detectContainer();
             }
-
-            MediaContainerHints hints = MediaContainerHints.from(getHeaderValue(inputStream.getCurrentResponse(), "Content-Type"), null);
-            return new MediaContainerDetection(containerRegistry, reference, inputStream, hints).detectContainer();
         } catch (URISyntaxException e) {
             throw new FriendlyException("Not a valid URL.", COMMON, e);
         }
+    }
+
+    private static String getUriFileExtension(URI uri) {
+        String path = uri.getPath();
+
+        if (path == null) {
+            return null;
+        }
+
+        int lastSlashIndex = path.lastIndexOf('/');
+        String fileName = lastSlashIndex >= 0 ? path.substring(lastSlashIndex + 1) : path;
+        int lastDotIndex = fileName.lastIndexOf('.');
+
+        return lastDotIndex >= 0 && lastDotIndex < fileName.length() - 1 ? fileName.substring(lastDotIndex + 1) : null;
     }
 
     @Override

@@ -35,6 +35,12 @@ public class AdtsContainerProbe implements MediaContainerProbe {
     }
 
     @Override
+    public boolean isContentSniffing() {
+        // This probe scans for an ADTS packet header sync, which can occur in unrelated binary data.
+        return true;
+    }
+
+    @Override
     public MediaContainerDetectionResult probe(AudioReference reference, SeekableInputStream inputStream) throws IOException {
         AdtsStreamReader reader = new AdtsStreamReader(inputStream);
 

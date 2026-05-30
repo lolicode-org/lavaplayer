@@ -56,10 +56,22 @@ public class MediaContainerDetection {
             SavedHeadSeekableInputStream savedHeadInputStream = new SavedHeadSeekableInputStream(inputStream, HEAD_MARK_LIMIT);
             savedHeadInputStream.loadHead();
 
-            result = detectContainer(savedHeadInputStream, true);
+            // Signature-based probes are consulted before content-sniffing ones (see MediaContainerProbe.isContentSniffing)
+            // so that a format with a definitive magic signature is never overridden by a sniffing probe matching unrelated
+            // bytes - e.g. an MP3 frame scan hitting a false sync inside FLAC audio when the server reports a wrong
+            // Content-Type. Within each group, hint-matching probes still take priority.
+            result = detectContainer(savedHeadInputStream, true, false);
 
             if (result == null) {
-                result = detectContainer(savedHeadInputStream, false);
+                result = detectContainer(savedHeadInputStream, false, false);
+            }
+
+            if (result == null) {
+                result = detectContainer(savedHeadInputStream, true, true);
+            }
+
+            if (result == null) {
+                result = detectContainer(savedHeadInputStream, false, true);
             }
         } catch (Exception e) {
             throw ExceptionTools.wrapUnfriendlyExceptions("Could not read the file for detecting file type.", SUSPICIOUS, e);
@@ -68,11 +80,11 @@ public class MediaContainerDetection {
         return result != null ? result : unknownFormat();
     }
 
-    private MediaContainerDetectionResult detectContainer(SeekableInputStream innerStream, boolean matchHints)
-        throws IOException {
+    private MediaContainerDetectionResult detectContainer(SeekableInputStream innerStream, boolean matchHints,
+                                                          boolean contentSniffing) throws IOException {
 
         for (MediaContainerProbe probe : containerRegistry.getAll()) {
-            if (matchHints == probe.matchesHints(hints)) {
+            if (probe.isContentSniffing() == contentSniffing && matchHints == probe.matchesHints(hints)) {
                 innerStream.seek(0);
                 MediaContainerDetectionResult result = checkContainer(probe, reference, innerStream);
 
