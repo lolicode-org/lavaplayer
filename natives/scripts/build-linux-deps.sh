@@ -60,6 +60,8 @@ COMMON_FLAGS="${COMMON_FLAGS:--fPIC -O3 -fdata-sections -ffunction-sections}"
 export CFLAGS="${CFLAGS:-$COMMON_FLAGS}"
 export CXXFLAGS="${CXXFLAGS:-$COMMON_FLAGS}"
 
+JOBS="$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
+
 # ---------------------------------------------------------------------------
 # Optional ccache support
 # ---------------------------------------------------------------------------
@@ -86,6 +88,27 @@ cmake_with_platform_args() {
     else
         cmake "$@"
     fi
+}
+
+# build_cmake_static_lib <name> <source-dir> <artifact> [extra cmake args...]
+# Configures and builds a CMake-based dependency as a static library and copies
+# the resulting <artifact> into LIBS_DIR. Skipped if the artifact already exists.
+build_cmake_static_lib() {
+    local name="$1" src="$2" artifact="$3"
+    shift 3
+    [ -f "$LIBS_DIR/$artifact" ] && return 0
+    echo "==> Building ${name}..."
+    local build_dir="$NATIVES_DIR/build/${name}-build-${CONFIGURE_HOST//\//-}"
+    mkdir -p "$build_dir"
+    pushd "$build_dir" >/dev/null
+    cmake_with_platform_args "$src" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DCMAKE_C_FLAGS="$CFLAGS" \
+        "$@"
+    cmake --build . -j"$JOBS"
+    find . -name "$artifact" -exec cp {} "$LIBS_DIR/" \;
+    popd >/dev/null
 }
 
 if [ -n "$TOOLCHAIN_FILE" ]; then
@@ -116,7 +139,7 @@ if [ ! -f "$OGG_INSTALL/lib/libogg.la" ]; then
         $HOST_FLAG \
         CC="$CONFIGURE_CC" \
         CFLAGS="$CFLAGS"
-    make -j"$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
+    make -j"$JOBS"
     make install
     popd
 fi
@@ -152,7 +175,7 @@ if [ ! -f "$LIBS_DIR/libvorbis.a" ]; then
     fi
     # Build libvorbis.la explicitly to skip noinst_PROGRAMS (test_sharedbook)
     # which fails on macOS with newer Xcode (-force_cpusubtype_ALL removed in ld)
-    make -C lib libvorbis.la -j"$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
+    make -C lib libvorbis.la -j"$JOBS"
     cp lib/.libs/libvorbis.a "$LIBS_DIR/"
     popd
 fi
@@ -177,7 +200,7 @@ if [ ! -f "$LIBS_DIR/libopus.a" ]; then
         CC="$CONFIGURE_CC" CXX="$CONFIGURE_CXX" \
         CFLAGS="$CFLAGS" CXXFLAGS="$CXXFLAGS"
     make clean
-    make -j"$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
+    make -j"$JOBS"
     cp .libs/libopus.a "$LIBS_DIR/"
     popd
 fi
@@ -188,60 +211,21 @@ fi
 # Use CMake (available since mpg123 1.32) to avoid autotools regeneration issues:
 # mpg123 1.33.x tarballs have m4/ files with newer mtimes than configure, causing
 # make to invoke autoconf which fails without libtool m4 macros on CI runners.
-MPG123_SRC="$NATIVES_DIR/mp3/mpg123"
-if [ ! -f "$LIBS_DIR/libmpg123.a" ]; then
-    echo "==> Building mpg123..."
-    MPG123_BUILD="$NATIVES_DIR/build/mpg123-build-${CONFIGURE_HOST//\//-}"
-    mkdir -p "$MPG123_BUILD"
-    pushd "$MPG123_BUILD"
-    cmake_with_platform_args "$MPG123_SRC/ports/cmake" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DBUILD_SHARED_LIBS=OFF \
-        -DBUILD_LIBOUT123=OFF \
-        -DBUILD_PROGRAMS=OFF \
-        -DCMAKE_C_FLAGS="$CFLAGS"
-    cmake --build . -j"$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
-    find . -name "libmpg123.a" -exec cp {} "$LIBS_DIR/" \;
-    popd
-fi
+build_cmake_static_lib mpg123 "$NATIVES_DIR/mp3/mpg123/ports/cmake" libmpg123.a \
+    -DBUILD_LIBOUT123=OFF \
+    -DBUILD_PROGRAMS=OFF
 
 # ---------------------------------------------------------------------------
 # 5. libsamplerate
 # ---------------------------------------------------------------------------
-SAMPLERATE_SRC="$NATIVES_DIR/samplerate"
-if [ ! -f "$LIBS_DIR/libsamplerate.a" ]; then
-    echo "==> Configuring and building libsamplerate..."
-    SAMPLERATE_BUILD="$NATIVES_DIR/build/samplerate-build-${CONFIGURE_HOST//\//-}"
-    mkdir -p "$SAMPLERATE_BUILD"
-    pushd "$SAMPLERATE_BUILD"
-    cmake_with_platform_args "$SAMPLERATE_SRC" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DBUILD_SHARED_LIBS=OFF \
-        -DCMAKE_C_FLAGS="$CFLAGS" \
-        -DLIBSAMPLERATE_EXAMPLES=OFF
-    cmake --build . -j"$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
-    find . -name "libsamplerate.a" -exec cp {} "$LIBS_DIR/" \;
-    popd
-fi
+build_cmake_static_lib samplerate "$NATIVES_DIR/samplerate" libsamplerate.a \
+    -DLIBSAMPLERATE_EXAMPLES=OFF
 
 # ---------------------------------------------------------------------------
 # 6. fdk-aac
 # ---------------------------------------------------------------------------
-FDKAAC_SRC="$NATIVES_DIR/fdk-aac"
-if [ ! -f "$LIBS_DIR/libfdk-aac.a" ]; then
-    echo "==> Building fdk-aac..."
-    FDKAAC_BUILD="$NATIVES_DIR/build/fdk-aac-build-${CONFIGURE_HOST//\//-}"
-    mkdir -p "$FDKAAC_BUILD"
-    pushd "$FDKAAC_BUILD"
-    cmake_with_platform_args "$FDKAAC_SRC" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DBUILD_SHARED_LIBS=OFF \
-        -DCMAKE_C_FLAGS="$CFLAGS" \
-        -DCMAKE_CXX_FLAGS="$CXXFLAGS"
-    cmake --build . -j"$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
-    find . -name "libfdk-aac.a" -exec cp {} "$LIBS_DIR/" \;
-    popd
-fi
+build_cmake_static_lib fdk-aac "$NATIVES_DIR/fdk-aac" libfdk-aac.a \
+    -DCMAKE_CXX_FLAGS="$CXXFLAGS"
 
 echo "==> All deps built successfully."
 ls -lh "$LIBS_DIR/"

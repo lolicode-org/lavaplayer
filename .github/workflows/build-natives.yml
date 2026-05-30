@@ -556,7 +556,8 @@ jobs:
                 include:
                     - target: win-x86-64
                       msys_env: MINGW64
-                      msys_unix_root: /mingw64
+                      msys_lib_root: /mingw64
+                      toolchain: ""
                       msys_packages: >-
                           mingw-w64-x86_64-gcc
                           mingw-w64-x86_64-opus
@@ -569,7 +570,8 @@ jobs:
 
                     - target: win-x86
                       msys_env: MINGW32
-                      msys_unix_root: /mingw32
+                      msys_lib_root: /mingw32
+                      toolchain: ""
                       msys_packages: >-
                           mingw-w64-i686-gcc
                           mingw-w64-i686-opus
@@ -580,6 +582,19 @@ jobs:
 
                     - target: win-aarch64
                       msys_env: CLANG64
+                      msys_lib_root: /clangarm64
+                      toolchain: cmake/toolchain-win-aarch64.cmake
+                      msys_packages: >-
+                          mingw-w64-clang-x86_64-clang
+                          mingw-w64-clang-x86_64-compiler-rt
+                          mingw-w64-clang-x86_64-cmake
+                          mingw-w64-clang-x86_64-ninja
+                          mingw-w64-clang-aarch64-toolchain
+                          mingw-w64-clang-aarch64-opus
+                          mingw-w64-clang-aarch64-libvorbis
+                          mingw-w64-clang-aarch64-mpg123
+                          mingw-w64-clang-aarch64-fdk-aac
+                          mingw-w64-clang-aarch64-libsamplerate
 
         steps:
             - name: Checkout
@@ -611,33 +626,14 @@ jobs:
               shell: cmd
               run: gradlew.bat :natives:load --no-daemon
 
-            - name: Setup MSYS2 (win-x86-64 / win-x86)
-              if: steps.dist-cache.outputs.cache-hit != 'true' && matrix.target != 'win-aarch64'
+            - name: Setup MSYS2
+              if: steps.dist-cache.outputs.cache-hit != 'true'
               uses: msys2/setup-msys2@v2
               with:
                   msystem: ${{ matrix.msys_env }}
                   update: true
                   cache: true
                   install: ${{ matrix.msys_packages }}
-
-            - name: Setup MSYS2 (win-aarch64)
-              if: steps.dist-cache.outputs.cache-hit != 'true' && matrix.target == 'win-aarch64'
-              uses: msys2/setup-msys2@v2
-              with:
-                  msystem: CLANG64
-                  update: true
-                  cache: true
-                  install: >-
-                      mingw-w64-clang-x86_64-clang
-                      mingw-w64-clang-x86_64-compiler-rt
-                      mingw-w64-clang-x86_64-cmake
-                      mingw-w64-clang-x86_64-ninja
-                      mingw-w64-clang-aarch64-toolchain
-                      mingw-w64-clang-aarch64-opus
-                      mingw-w64-clang-aarch64-libvorbis
-                      mingw-w64-clang-aarch64-mpg123
-                      mingw-w64-clang-aarch64-fdk-aac
-                      mingw-w64-clang-aarch64-libsamplerate
 
             - name: Build missing MINGW32 deps from source (win-x86 only)
               if: steps.dist-cache.outputs.cache-hit != 'true' && matrix.target == 'win-x86'
@@ -660,36 +656,6 @@ jobs:
                   cmake --build .
                   find . -name "libsamplerate.a" -exec cp {} "$LIBS_DIR/" \;
 
-            - name: Build connector (win-x86-64 / win-x86)
-              if: steps.dist-cache.outputs.cache-hit != 'true' && matrix.target != 'win-aarch64'
-              shell: msys2 {0}
-              run: |
-                  TARGET="${{ matrix.target }}"
-                  MSYS_UNIX_ROOT="${{ matrix.msys_unix_root }}"
-                  WORKSPACE="$(cygpath -u '${{ github.workspace }}')"
-                  LIBS_DIR="${WORKSPACE}/natives/libs/64"
-                  DIST_DIR="${WORKSPACE}/natives/dist/${TARGET}"
-                  BUILD_DIR="${WORKSPACE}/natives/build/${TARGET}"
-                  mkdir -p "$LIBS_DIR" "$DIST_DIR" "$BUILD_DIR"
-
-                  for lib in opus vorbis ogg mpg123 fdk-aac samplerate; do
-                      src_a="${MSYS_UNIX_ROOT}/lib/lib${lib}.a"
-                      [ -f "$src_a" ] && cp "$src_a" "$LIBS_DIR/" || echo "Note: $src_a not in MSYS2 (may be built from source)"
-                  done
-
-                  JAVA_HOME="$(cygpath -u "$JAVA_HOME")"
-                  cd "$BUILD_DIR"
-                  DIST_DIR="$DIST_DIR" JAVA_HOME="$JAVA_HOME" \
-                  cmake "${WORKSPACE}/natives" \
-                      -G Ninja \
-                      -DCMAKE_BUILD_TYPE=Release
-                  DIST_DIR="$DIST_DIR" JAVA_HOME="$JAVA_HOME" cmake --build .
-
-                  cp "${MSYS_UNIX_ROOT}/bin/libmpg123-0.dll" "$DIST_DIR/"
-                  if command -v strip >/dev/null 2>&1; then
-                      strip --strip-unneeded "$DIST_DIR/libmpg123-0.dll"
-                  fi
-
             - name: Copy aarch64 builtins for cross-compilation (win-aarch64)
               if: steps.dist-cache.outputs.cache-hit != 'true' && matrix.target == 'win-aarch64'
               shell: msys2 {0}
@@ -705,36 +671,46 @@ jobs:
                   fi
                   cp "$FOUND" "$DEST/libclang_rt.builtins.a"
 
-            - name: Build connector (win-aarch64)
-              if: steps.dist-cache.outputs.cache-hit != 'true' && matrix.target == 'win-aarch64'
+            - name: Build connector
+              if: steps.dist-cache.outputs.cache-hit != 'true'
               shell: msys2 {0}
               run: |
-                  TARGET="win-aarch64"
+                  TARGET="${{ matrix.target }}"
+                  LIB_ROOT="${{ matrix.msys_lib_root }}"
                   WORKSPACE="$(cygpath -u '${{ github.workspace }}')"
-                  ARM64_LIB_ROOT="/clangarm64"
                   LIBS_DIR="${WORKSPACE}/natives/libs/64"
                   DIST_DIR="${WORKSPACE}/natives/dist/${TARGET}"
                   BUILD_DIR="${WORKSPACE}/natives/build/${TARGET}"
                   mkdir -p "$LIBS_DIR" "$DIST_DIR" "$BUILD_DIR"
 
+                  # Reuse prebuilt MSYS2 static libs where available; any missing
+                  # ones were built from source into LIBS_DIR by an earlier step.
                   for lib in opus vorbis ogg mpg123 fdk-aac samplerate; do
-                      src_a="${ARM64_LIB_ROOT}/lib/lib${lib}.a"
-                      [ -f "$src_a" ] && cp "$src_a" "$LIBS_DIR/" || echo "Warning: $src_a not found"
+                      src_a="${LIB_ROOT}/lib/lib${lib}.a"
+                      [ -f "$src_a" ] && cp "$src_a" "$LIBS_DIR/" || echo "Note: $src_a not found (may be built from source)"
                   done
 
+                  # Cross-compiled targets supply a toolchain file; native ones don't.
+                  CMAKE_ARGS=()
+                  if [ -n "${{ matrix.toolchain }}" ]; then
+                      export CLANGARM64_ROOT="$LIB_ROOT"
+                      CMAKE_ARGS+=("-DCMAKE_TOOLCHAIN_FILE=${WORKSPACE}/natives/${{ matrix.toolchain }}")
+                  fi
+
                   JAVA_HOME="$(cygpath -u "$JAVA_HOME")"
-                  TOOLCHAIN="${WORKSPACE}/natives/cmake/toolchain-win-aarch64.cmake"
                   cd "$BUILD_DIR"
-                  DIST_DIR="$DIST_DIR" JAVA_HOME="$JAVA_HOME" CLANGARM64_ROOT="$ARM64_LIB_ROOT" \
+                  DIST_DIR="$DIST_DIR" JAVA_HOME="$JAVA_HOME" \
                   cmake "${WORKSPACE}/natives" \
                       -G Ninja \
                       -DCMAKE_BUILD_TYPE=Release \
-                      -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN"
+                      "${CMAKE_ARGS[@]}"
                   DIST_DIR="$DIST_DIR" JAVA_HOME="$JAVA_HOME" cmake --build .
 
-                  cp "${ARM64_LIB_ROOT}/bin/libmpg123-0.dll" "$DIST_DIR/"
+                  cp "${LIB_ROOT}/bin/libmpg123-0.dll" "$DIST_DIR/"
                   if command -v llvm-strip >/dev/null 2>&1; then
                       llvm-strip -s "$DIST_DIR/libmpg123-0.dll"
+                  elif command -v strip >/dev/null 2>&1; then
+                      strip --strip-unneeded "$DIST_DIR/libmpg123-0.dll"
                   fi
 
             - name: Upload artifact
@@ -780,6 +756,15 @@ jobs:
                     - label: linux-x86-64
                       runner: ubuntu-latest
 
+                    - label: linux-aarch64
+                      runner: ubuntu-24.04-arm
+
+                    # Alpine container exercises the musl natives; Java ships in
+                    # the image, so the JDK/Gradle setup steps are skipped for it.
+                    - label: linux-musl-x86-64
+                      runner: ubuntu-latest
+                      container: eclipse-temurin:17-jdk-alpine
+
                     - label: darwin-intel
                       runner: macos-26-intel
 
@@ -790,38 +775,10 @@ jobs:
                       runner: windows-latest
 
         runs-on: ${{ matrix.runner }}
+        container: ${{ matrix.container }}
         steps:
-            - name: Checkout
-              uses: actions/checkout@v6
-
-            - name: Download natives
-              uses: actions/download-artifact@v8
-              with:
-                  name: natives-resources
-                  path: main/build/embedded-natives
-
-            - name: Setup Java
-              uses: actions/setup-java@v5
-              with:
-                  distribution: zulu
-                  java-version: 17
-
-            - name: Setup Gradle
-              uses: gradle/actions/setup-gradle@v6
-              with:
-                  cache-provider: 'basic'
-
-            - name: Test natives (${{ matrix.label }})
-              shell: bash
-              run: ./gradlew :main:test --no-daemon
-
-    test-natives-musl-x86-64:
-        needs: [package-natives]
-        runs-on: ubuntu-latest
-        container:
-            image: eclipse-temurin:17-jdk-alpine
-        steps:
-            - name: Install git and bash
+            - name: Install Alpine prerequisites
+              if: matrix.container != ''
               run: apk add --no-cache bash git
 
             - name: Checkout
@@ -833,32 +790,19 @@ jobs:
                   name: natives-resources
                   path: main/build/embedded-natives
 
-            - name: Test natives (linux-musl-x86-64)
-              run: ./gradlew :main:test --no-daemon
-
-    test-natives-linux-aarch64:
-        needs: [package-natives]
-        runs-on: ubuntu-24.04-arm
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v6
-
-            - name: Download natives
-              uses: actions/download-artifact@v8
-              with:
-                  name: natives-resources
-                  path: main/build/embedded-natives
-
             - name: Setup Java
+              if: matrix.container == ''
               uses: actions/setup-java@v5
               with:
                   distribution: zulu
                   java-version: 17
 
             - name: Setup Gradle
+              if: matrix.container == ''
               uses: gradle/actions/setup-gradle@v6
               with:
                   cache-provider: 'basic'
 
-            - name: Test natives (linux-aarch64)
+            - name: Test natives (${{ matrix.label }})
+              shell: bash
               run: ./gradlew :main:test --no-daemon
