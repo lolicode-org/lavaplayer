@@ -23,6 +23,16 @@ public interface MediaContainerProbe {
     boolean matchesHints(MediaContainerHints hints);
 
     /**
+     * @return True if this probe identifies its format by scanning the stream content for a pattern that may also occur
+     * in unrelated data (e.g. searching for an MPEG frame sync) rather than matching a fixed signature at a known
+     * position. Such probes are prone to false positives on other formats' data, so detection only consults them after
+     * every signature-based probe has had a chance to match. Defaults to false (signature-based).
+     */
+    default boolean isContentSniffing() {
+        return false;
+    }
+
+    /**
      * Detect whether the file readable from the input stream is using this container and if this specific file uses
      * a format and codec that is supported for playback.
      *

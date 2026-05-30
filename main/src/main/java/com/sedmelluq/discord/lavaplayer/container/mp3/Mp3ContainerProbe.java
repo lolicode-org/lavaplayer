@@ -38,6 +38,12 @@ public class Mp3ContainerProbe implements MediaContainerProbe {
     }
 
     @Override
+    public boolean isContentSniffing() {
+        // Outside of the ID3 case this probe scans for an MPEG frame sync, which can occur in unrelated binary data.
+        return true;
+    }
+
+    @Override
     public MediaContainerDetectionResult probe(AudioReference reference, SeekableInputStream inputStream) throws IOException {
         if (!checkNextBytes(inputStream, ID3_TAG)) {
             byte[] frameHeader = new byte[4];

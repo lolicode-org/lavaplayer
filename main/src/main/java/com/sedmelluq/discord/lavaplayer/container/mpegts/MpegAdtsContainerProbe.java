@@ -32,6 +32,12 @@ public class MpegAdtsContainerProbe implements MediaContainerProbe {
     }
 
     @Override
+    public boolean isContentSniffing() {
+        // This probe scans for MPEG-TS packet syncs, which can occur in unrelated binary data.
+        return true;
+    }
+
+    @Override
     public MediaContainerDetectionResult probe(AudioReference reference, SeekableInputStream inputStream)
         throws IOException {
 
