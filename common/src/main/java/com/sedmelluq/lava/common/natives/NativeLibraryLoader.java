@@ -5,11 +5,15 @@ import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.channels.FileLockInterruptionException;
 import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.*;
 import java.security.DigestInputStream;
@@ -350,32 +354,16 @@ public class NativeLibraryLoader {
         }
 
         Path hashDirectory = libraryCacheDirectory.resolve(expectedHash);
-        createDirectoriesSecurely(hashDirectory);
-
         Path cachedFile = hashDirectory.resolve(libraryFileName);
         Object jvmLock = cacheLocks.computeIfAbsent(cachedFile.toAbsolutePath().normalize(), key -> new Object());
 
         synchronized (jvmLock) {
-            try (FileChannel lockChannel = FileChannel.open(
-                hashDirectory.resolve(".install.lock"),
-                StandardOpenOption.CREATE,
-                StandardOpenOption.WRITE
-            ); FileLock ignored = acquireFileLock(lockChannel)) {
+            try {
+                createDirectoriesSecurely(hashDirectory);
 
-                if (Files.exists(cachedFile)) {
-                    deleteFileIfExists(tempFile);
-                    verifyFileHash(cachedFile, expectedHash);
-                    return cachedFile;
+                try (Closeable ignored = acquireCacheLock(hashDirectory.resolve(".install.lock"))) {
+                    return installTempFileToCache(tempFile, cachedFile, expectedHash);
                 }
-
-                moveTempFileToCache(tempFile, cachedFile);
-                try {
-                    verifyFileHash(cachedFile, expectedHash);
-                } catch (IOException | RuntimeException e) {
-                    deleteFileIfExists(cachedFile);
-                    throw e;
-                }
-                return cachedFile;
             } catch (IOException | RuntimeException e) {
                 deleteFileIfExists(tempFile);
                 throw e;
@@ -469,19 +457,98 @@ public class NativeLibraryLoader {
         }
     }
 
-    private static FileLock acquireFileLock(FileChannel channel) throws IOException {
+    private static Path installTempFileToCache(Path tempFile, Path cachedFile, String expectedHash) throws IOException {
+        if (Files.exists(cachedFile)) {
+            deleteFileIfExists(tempFile);
+            verifyFileHash(cachedFile, expectedHash);
+            return cachedFile;
+        }
+
+        try {
+            moveTempFileToCache(tempFile, cachedFile);
+        } catch (FileAlreadyExistsException e) {
+            deleteFileIfExists(tempFile);
+            verifyFileHash(cachedFile, expectedHash);
+            return cachedFile;
+        }
+
+        try {
+            verifyFileHash(cachedFile, expectedHash);
+        } catch (IOException | RuntimeException e) {
+            deleteFileIfExists(cachedFile);
+            throw e;
+        }
+
+        return cachedFile;
+    }
+
+    private static Closeable acquireCacheLock(Path lockFile) throws IOException {
+        FileChannel channel;
+
+        try {
+            channel = FileChannel.open(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+        } catch (IOException e) {
+            if (isInterruptionFailure(e)) {
+                Thread.currentThread().interrupt();
+                throw e;
+            }
+
+            log.warn("Native library cache lock {} could not be opened, continuing with JVM-local locking only.",
+                lockFile, e);
+            return () -> {};
+        }
+
+        try {
+            FileLock lock = acquireFileLock(channel, lockFile);
+            return () -> {
+                try {
+                    lock.close();
+                } finally {
+                    channel.close();
+                }
+            };
+        } catch (IOException | RuntimeException e) {
+            channel.close();
+
+            if (e instanceof IOException && isInterruptionFailure((IOException) e)) {
+                Thread.currentThread().interrupt();
+                throw e;
+            }
+
+            log.warn("Native library cache lock {} could not be acquired, continuing with JVM-local locking only.",
+                lockFile, e);
+            return () -> {};
+        }
+    }
+
+    static FileLock acquireFileLock(FileChannel channel, Path lockFile) throws IOException {
         while (true) {
             try {
                 return channel.lock();
+            } catch (FileLockInterruptionException | ClosedByInterruptException e) {
+                Thread.currentThread().interrupt();
+                throw e;
+            } catch (IOException e) {
+                throw new IOException("Failed to acquire native library cache lock: " + lockFile, e);
             } catch (OverlappingFileLockException e) {
                 try {
                     Thread.sleep(10L);
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
-                    throw new IOException("Interrupted while waiting for native library cache lock.", interrupted);
+                    InterruptedIOException exception = new InterruptedIOException(
+                        "Interrupted while waiting for native library cache lock: " + lockFile
+                    );
+                    exception.initCause(interrupted);
+                    throw exception;
                 }
             }
         }
+    }
+
+    private static boolean isInterruptionFailure(IOException exception) {
+        return exception instanceof FileLockInterruptionException
+            || exception instanceof ClosedByInterruptException
+            || exception instanceof InterruptedIOException;
     }
 
     private static void verifyFileHash(Path file, String expectedHash) throws IOException {
