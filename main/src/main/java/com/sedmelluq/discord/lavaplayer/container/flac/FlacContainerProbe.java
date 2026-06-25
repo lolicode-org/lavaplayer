@@ -13,11 +13,10 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
-import static com.sedmelluq.discord.lavaplayer.container.MediaContainerDetection.checkNextBytes;
 import static com.sedmelluq.discord.lavaplayer.container.MediaContainerDetectionResult.supportedFormat;
 
 /**
- * Container detection probe for MP3 format.
+ * Container detection probe for FLAC format.
  */
 public class FlacContainerProbe implements MediaContainerProbe {
     private static final Logger log = LoggerFactory.getLogger(FlacContainerProbe.class);
@@ -37,7 +36,7 @@ public class FlacContainerProbe implements MediaContainerProbe {
 
     @Override
     public MediaContainerDetectionResult probe(AudioReference reference, SeekableInputStream inputStream) throws IOException {
-        if (!checkNextBytes(inputStream, FlacFileLoader.FLAC_CC)) {
+        if (!FlacFileLoader.seekToFlacHeader(inputStream)) {
             return null;
         }
 
