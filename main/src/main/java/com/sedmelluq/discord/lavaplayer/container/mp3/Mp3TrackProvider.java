@@ -33,6 +33,7 @@ public class Mp3TrackProvider implements AudioTrackInfoProvider {
     // junk between the declared end of the ID3v2 tag and the first frame,
     // so this is kept well above any realistic gap to avoid spuriously rejecting valid MP3 files.
     private static final int FIRST_FRAME_SCAN_DISTANCE = 32768;
+    private static final int MINIMUM_FIRST_FRAME_COUNT = 3;
 
     private static final String TITLE_TAG = "TIT2";
     private static final String ARTIST_TAG = "TPE1";
@@ -82,7 +83,7 @@ public class Mp3TrackProvider implements AudioTrackInfoProvider {
     public void parseHeaders() throws IOException {
         skipIdv3Tags();
 
-        if (!frameReader.scanForFrame(FIRST_FRAME_SCAN_DISTANCE, true)) {
+        if (!frameReader.scanForFrame(FIRST_FRAME_SCAN_DISTANCE, true, MINIMUM_FIRST_FRAME_COUNT)) {
             throw new IllegalStateException("File ended before the first frame was found.");
         }
 

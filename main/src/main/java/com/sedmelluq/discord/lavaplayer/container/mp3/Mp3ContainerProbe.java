@@ -24,6 +24,7 @@ public class Mp3ContainerProbe implements MediaContainerProbe {
     private static final Logger log = LoggerFactory.getLogger(Mp3ContainerProbe.class);
 
     private static final int[] ID3_TAG = new int[]{0x49, 0x44, 0x33};
+    private static final int MINIMUM_FIRST_FRAME_COUNT = 3;
 
     @Override
     public String getName() {
@@ -48,7 +49,7 @@ public class Mp3ContainerProbe implements MediaContainerProbe {
         if (!checkNextBytes(inputStream, ID3_TAG)) {
             byte[] frameHeader = new byte[4];
             Mp3FrameReader frameReader = new Mp3FrameReader(inputStream, frameHeader);
-            if (!frameReader.scanForFrame(STREAM_SCAN_DISTANCE, false)) {
+            if (!frameReader.scanForFrame(STREAM_SCAN_DISTANCE, false, MINIMUM_FIRST_FRAME_COUNT)) {
                 return null;
             }
 

@@ -42,18 +42,36 @@ public class Mp3FrameReader {
      * @throws IllegalStateException If the maximum number of bytes to check was reached before a frame was found
      */
     public boolean scanForFrame(int bytesToCheck, boolean throwOnLimit) throws IOException {
+        return scanForFrame(bytesToCheck, throwOnLimit, 1);
+    }
+
+    /**
+     * @param bytesToCheck      The maximum number of bytes to check before throwing an IllegalStateException
+     * @param throwOnLimit      Whether to throw an exception when maximum number of bytes is reached, but no frame has
+     *                          been found and EOF has not been reached.
+     * @param minimumFrameCount Number of consecutive frames to require before accepting a candidate frame.
+     * @return True if a frame was found, false if EOF was encountered.
+     * @throws IOException           On IO error
+     * @throws IllegalStateException If the maximum number of bytes to check was reached before a frame was found
+     */
+    public boolean scanForFrame(int bytesToCheck, boolean throwOnLimit, int minimumFrameCount) throws IOException {
         int bytesInBuffer = scanBufferPosition;
         scanBufferPosition = 0;
 
         if (parseFrameAt(bytesInBuffer)) {
-            frameHeaderRead = true;
-            return true;
+            if (validateFrameSequence(minimumFrameCount)) {
+                frameHeaderRead = true;
+                return true;
+            }
+
+            clearFrameHeader();
         }
 
-        return runFrameScanLoop(bytesToCheck - bytesInBuffer, bytesInBuffer, throwOnLimit);
+        return runFrameScanLoop(bytesToCheck - bytesInBuffer, bytesInBuffer, throwOnLimit, minimumFrameCount);
     }
 
-    private boolean runFrameScanLoop(int bytesToCheck, int bytesInBuffer, boolean throwOnLimit) throws IOException {
+    private boolean runFrameScanLoop(int bytesToCheck, int bytesInBuffer, boolean throwOnLimit,
+                                     int minimumFrameCount) throws IOException {
         while (bytesToCheck > 0) {
             for (int i = bytesInBuffer; i < scanBuffer.length && bytesToCheck > 0; i++, bytesToCheck--) {
                 int next = inputStream.read();
@@ -64,8 +82,12 @@ public class Mp3FrameReader {
                 scanBuffer[i] = (byte) (next & 0xFF);
 
                 if (parseFrameAt(i + 1)) {
-                    frameHeaderRead = true;
-                    return true;
+                    if (validateFrameSequence(minimumFrameCount)) {
+                        frameHeaderRead = true;
+                        return true;
+                    }
+
+                    clearFrameHeader();
                 }
             }
 
@@ -79,6 +101,53 @@ public class Mp3FrameReader {
         return false;
     }
 
+    private boolean validateFrameSequence(int minimumFrameCount) throws IOException {
+        if (minimumFrameCount <= 1 || !inputStream.canSeekHard()) {
+            return true;
+        }
+
+        long resumePosition = inputStream.getPosition();
+        long framePosition = getFrameStartPosition();
+        byte[] header = new byte[HEADER_SIZE];
+
+        try {
+            for (int i = 0; i < minimumFrameCount; i++) {
+                inputStream.seek(framePosition);
+
+                if (!readFrameHeader(header) || !isValidFrameHeader(header, 0)) {
+                    return false;
+                }
+
+                framePosition += Mp3Decoder.getFrameSize(header, 0);
+            }
+
+            return true;
+        } finally {
+            inputStream.seek(resumePosition);
+        }
+    }
+
+    private boolean readFrameHeader(byte[] header) throws IOException {
+        int position = 0;
+
+        while (position < HEADER_SIZE) {
+            int read = inputStream.read(header, position, HEADER_SIZE - position);
+            if (read == -1) {
+                return false;
+            }
+
+            position += read;
+        }
+
+        return true;
+    }
+
+    private void clearFrameHeader() {
+        frameSize = 0;
+        frameBufferPosition = 0;
+        frameHeaderRead = false;
+    }
+
     private int copyScanBufferEndToBeginning() {
         for (int i = 0; i < HEADER_SIZE - 1; i++) {
             scanBuffer[i] = scanBuffer[scanBuffer.length - HEADER_SIZE + i + 1];
@@ -89,12 +158,8 @@ public class Mp3FrameReader {
 
     private boolean parseFrameAt(int scanOffset) {
         int offset = scanOffset - HEADER_SIZE;
-        boolean invalid = offset < 0
-            || !Mp3Decoder.hasFrameSync(scanBuffer, offset)
-            || Mp3Decoder.isUnsupportedVersion(scanBuffer, offset)
-            || !Mp3Decoder.isValidFrame(scanBuffer, offset);
 
-        if (invalid)
+        if (offset < 0 || !isValidFrameHeader(scanBuffer, offset))
             return false;
 
         frameSize = Mp3Decoder.getFrameSize(scanBuffer, offset);
@@ -104,6 +169,12 @@ public class Mp3FrameReader {
 
         frameBufferPosition = HEADER_SIZE;
         return true;
+    }
+
+    private static boolean isValidFrameHeader(byte[] buffer, int offset) {
+        return Mp3Decoder.hasFrameSync(buffer, offset)
+            && !Mp3Decoder.isUnsupportedVersion(buffer, offset)
+            && Mp3Decoder.isValidFrame(buffer, offset);
     }
 
     /**
