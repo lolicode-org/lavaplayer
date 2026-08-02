@@ -8,6 +8,13 @@
  * However, this also means that the libraries will be extracted every time, which can cause issues on some platforms and is generally not ideal, especially on linux where /tmp may not be allowed to be executed from.
  * The new caching mechanism will extract the libraries once and reuse them, which should reduce issues with native library loading without introducing new conflicts in most cases.
 
+## [2.2.7] -- 2026-07-03
+* Fixed Ogg playback position being set to 0 on seek in https://github.com/lavalink-devs/lavaplayer/commit/94f9d5706414ef50b21e92628f212b6e16260302
+* Fixed AAC per-frame decode errors being treated as fatal in https://github.com/lavalink-devs/lavaplayer/pull/192
+* Fixed MP4 probing of invalid files causing excessive CPU usage in https://github.com/lavalink-devs/lavaplayer/pull/192
+* Fixed the incorrect sha256Hash in `TwitchAudioSourceManager` in https://github.com/lavalink-devs/lavaplayer/pull/190
+* Changed the `SoundCloudAudioSourceManager` search prefix public in https://github.com/lavalink-devs/lavaplayer/pull/188
+
 ## [2.2.6.3] - 2026-05-15
 * Remove prebuilt native libraries from the repo, the ci will now build them from source.
 * Added support for windows arm64.
