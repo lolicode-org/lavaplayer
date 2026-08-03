@@ -31,7 +31,8 @@ import static com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity.
  * Audio source manager which detects Beam.pro tracks by URL.
  */
 public class BeamAudioSourceManager implements AudioSourceManager, HttpConfigurable {
-    private static final String STREAM_NAME_REGEX = "^https://(?:www\\.)?(?:beam\\.pro|mixer\\.com)/([^/]+)$";
+    private static final String STREAM_NAME_REGEX =
+        "^https://(?:www\\.)?(?:beam\\.pro|mixer\\.com)/([a-zA-Z0-9_-]{1,64})/?(?:\\?.*)?$";
     private static final Pattern streamNameRegex = Pattern.compile(STREAM_NAME_REGEX);
 
     private final HttpInterfaceManager httpInterfaceManager;
@@ -109,7 +110,7 @@ public class BeamAudioSourceManager implements AudioSourceManager, HttpConfigura
         return hosteeId != null ? hosteeId : channelInfo.get("id").text();
     }
 
-    private static String getChannelNameFromUrl(String url) {
+    static String getChannelNameFromUrl(String url) {
         Matcher matcher = streamNameRegex.matcher(url);
         if (!matcher.matches()) {
             return null;

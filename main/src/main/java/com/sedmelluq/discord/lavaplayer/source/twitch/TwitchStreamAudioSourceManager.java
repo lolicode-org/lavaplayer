@@ -43,7 +43,8 @@ import static com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity.
  */
 public class TwitchStreamAudioSourceManager implements AudioSourceManager, HttpConfigurable {
     private static final Logger log = LoggerFactory.getLogger(TwitchStreamAudioSourceManager.class);
-    private static final String STREAM_NAME_REGEX = "^https://(?:www\\.|go\\.|m\\.)?twitch.tv/([^/]+)$";
+    private static final String STREAM_NAME_REGEX =
+        "^https://(?:www\\.|go\\.|m\\.)?twitch\\.tv/([a-zA-Z0-9_]{1,25})/?(?:\\?.*)?$";
     private static final Pattern streamNameRegex = Pattern.compile(STREAM_NAME_REGEX);
 
     private final HttpInterfaceManager httpInterfaceManager;
