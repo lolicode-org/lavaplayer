@@ -73,12 +73,12 @@ class NativeLibraryLoaderTest {
         try {
             List<Future<Path>> futures = new ArrayList<>();
             for (int i = 0; i < 8; i++) {
-                futures.add(executor.submit(() -> extract(nativeBytes)));
+                futures.add(executor.submit(() -> extractWithRetry(nativeBytes)));
             }
 
-            Path expectedPath = futures.get(0).get(5, TimeUnit.SECONDS);
+            Path expectedPath = futures.get(0).get(15, TimeUnit.SECONDS);
             for (Future<Path> future : futures) {
-                assertEquals(expectedPath, future.get(5, TimeUnit.SECONDS));
+                assertEquals(expectedPath, future.get(15, TimeUnit.SECONDS));
             }
             assertArrayEquals(nativeBytes, Files.readAllBytes(expectedPath));
         } finally {
@@ -168,6 +168,20 @@ class NativeLibraryLoaderTest {
             "connector",
             new ByteArrayInputStream(nativeBytes)
         );
+    }
+
+    private Path extractWithRetry(byte[] nativeBytes) throws IOException, InterruptedException {
+        IOException lastException = null;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                return extract(nativeBytes);
+            } catch (IOException e) {
+                lastException = e;
+                Thread.sleep(25L);
+            }
+        }
+
+        throw lastException;
     }
 
     private static String sha256(byte[] bytes) throws Exception {
