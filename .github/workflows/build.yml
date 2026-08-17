@@ -206,7 +206,7 @@ jobs:
         runs-on: ubuntu-latest
         permissions:
             contents: write
-        if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'workflow_dispatch' && inputs.release != '') }}
+        if: ${{ always() && needs.build.result == 'success' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'workflow_dispatch' && inputs.release != '')) }}
         steps:
             - name: Get the tag name
               id: get_tag
