@@ -69,7 +69,7 @@ jobs:
             - name: Cache dist output
               if: inputs.skip-cache != true
               id: dist-cache
-              uses: actions/cache@v5
+              uses: actions/cache@v6
               with:
                   path: natives/dist/${{ matrix.target }}
                   key: natives-dist-v2-${{ matrix.target }}-${{ hashFiles('natives/**', '.github/workflows/build-natives.yml') }}
@@ -170,7 +170,7 @@ jobs:
             - name: Cache dist output
               if: inputs.skip-cache != true
               id: dist-cache
-              uses: actions/cache@v5
+              uses: actions/cache@v6
               with:
                   path: natives/dist/${{ matrix.target }}
                   key: natives-dist-v2-${{ matrix.target }}-${{ hashFiles('natives/**', '.github/workflows/build-natives.yml') }}
@@ -333,7 +333,7 @@ jobs:
             - name: Cache dist output
               if: inputs.skip-cache != true
               id: dist-cache
-              uses: actions/cache@v5
+              uses: actions/cache@v6
               with:
                   path: natives/dist/${{ matrix.target }}
                   key: natives-dist-v2-${{ matrix.target }}-${{ hashFiles('natives/**', '.github/workflows/build-natives.yml') }}
@@ -456,7 +456,7 @@ jobs:
             - name: Cache dist output
               if: inputs.skip-cache != true
               id: dist-cache
-              uses: actions/cache@v5
+              uses: actions/cache@v6
               with:
                   path: natives/dist/${{ matrix.target }}
                   key: natives-dist-v2-${{ matrix.target }}-${{ hashFiles('natives/**', '.github/workflows/build-natives.yml') }}
@@ -603,7 +603,7 @@ jobs:
             - name: Cache dist output
               if: inputs.skip-cache != true
               id: dist-cache
-              uses: actions/cache@v5
+              uses: actions/cache@v6
               with:
                   path: natives/dist/${{ matrix.target }}
                   key: natives-dist-v2-${{ matrix.target }}-${{ hashFiles('natives/**', '.github/workflows/build-natives.yml') }}

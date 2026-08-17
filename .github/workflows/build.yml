@@ -20,18 +20,62 @@ on:
                 required: false
                 default: ''
 
+            skip-natives-cache:
+                description: 'Force a full rebuild of natives, bypassing the cache'
+                type: boolean
+                required: false
+                default: false
+
 permissions:
     contents: read
     packages: read
 
 jobs:
+    check-natives-cache:
+        runs-on: ubuntu-latest
+        outputs:
+            cache-hit: ${{ steps.check.outputs.cache-hit }}
+            cache-key: ${{ steps.cache-key.outputs.key }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v6
+
+            - name: Compute natives cache key
+              id: cache-key
+              run: |
+                  KEY="natives-resources-v2-${{ hashFiles('natives/**', '.github/workflows/build-natives.yml') }}"
+                  echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+            - name: Check natives cache
+              id: cache-natives
+              if: ${{ github.event_name != 'workflow_dispatch' || inputs.skip-natives-cache != true }}
+              uses: actions/cache/restore@v6
+              with:
+                  path: main/build/embedded-natives
+                  key: ${{ steps.cache-key.outputs.key }}
+                  lookup-only: true
+
+            - name: Determine cache hit
+              id: check
+              run: |
+                  if [ "${{ steps.cache-natives.outputs.cache-hit }}" = "true" ]; then
+                    echo "cache-hit=true" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "cache-hit=false" >> "$GITHUB_OUTPUT"
+                  fi
+
     build-natives:
+        needs: check-natives-cache
+        if: needs.check-natives-cache.outputs.cache-hit != 'true'
         permissions:
             contents: read
         uses: ./.github/workflows/build-natives.yml
+        with:
+            skip-cache: ${{ inputs.skip-natives-cache || false }}
 
     build:
-        needs: build-natives
+        needs: [check-natives-cache, build-natives]
+        if: always() && needs.check-natives-cache.result == 'success' && (needs.build-natives.result == 'success' || needs.build-natives.result == 'skipped')
         runs-on: ubuntu-latest
         permissions:
             contents: read
@@ -42,11 +86,27 @@ jobs:
               with:
                   fetch-depth: 0
 
-            - name: Download natives
+            - name: Restore natives from cache
+              if: needs.check-natives-cache.outputs.cache-hit == 'true'
+              uses: actions/cache/restore@v6
+              with:
+                  path: main/build/embedded-natives
+                  key: ${{ needs.check-natives-cache.outputs.cache-key }}
+                  fail-on-cache-miss: true
+
+            - name: Download natives from build artifact
+              if: needs.check-natives-cache.outputs.cache-hit != 'true'
               uses: actions/download-artifact@v8
               with:
                   name: natives-resources
                   path: main/build/embedded-natives
+
+            - name: Save natives to cache
+              if: needs.check-natives-cache.outputs.cache-hit != 'true'
+              uses: actions/cache/save@v6
+              with:
+                  path: main/build/embedded-natives
+                  key: ${{ needs.check-natives-cache.outputs.cache-key }}
 
             - name: Setup Java
               uses: actions/setup-java@v5
