@@ -82,6 +82,14 @@ jobs:
                   if [[ "$GITHUB_REF" != refs/tags/* && -z "$RELEASE_VERSION" ]]; then
                     snapshot_flag="true"
                     target_prefix="snapshots"
+
+                    # If this is a branch push and HEAD is tagged with a release tag,
+                    # skip snapshot publishing to prevent colliding with the release workflow.
+                    matching_tag=$(git tag --points-at HEAD | grep -v -- '-SNAPSHOT' | head -n 1 || true)
+                    if [[ -n "$matching_tag" ]]; then
+                      echo "Commit is tagged as '$matching_tag'; skipping snapshot publishing for branch push."
+                      exit 0
+                    fi
                   fi
 
                   staging_dir="$RUNNER_TEMP/r2-staging"

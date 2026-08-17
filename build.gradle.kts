@@ -224,12 +224,22 @@ fun versionFromGit(): Pair<String, Boolean> {
         }
     }
 
-    val headTag = runGit("tag", "--points-at", "HEAD")
-        ?.lineSequence()
-        ?.firstOrNull { it.isNotBlank() && !it.endsWith("-SNAPSHOT", ignoreCase = true) }
+    val githubRef = System.getenv("GITHUB_REF")
+    val isTagRef = githubRef?.startsWith("refs/tags/") == true
+    val isBranchOrPullRef = githubRef?.startsWith("refs/heads/") == true || githubRef?.startsWith("refs/pull/") == true
+
+    val tagFromEnv = if (isTagRef) githubRef.removePrefix("refs/tags/") else null
+
+    val headTag = when {
+        tagFromEnv != null -> tagFromEnv
+        isBranchOrPullRef -> null // In CI on a branch/PR, ignore HEAD tags to prevent release collisions
+        else -> runGit("tag", "--points-at", "HEAD")
+            ?.lineSequence()
+            ?.firstOrNull { it.isNotBlank() && !it.endsWith("-SNAPSHOT", ignoreCase = true) }
+    }
 
     val clean = runGit("status", "--porcelain")?.isBlank() == true
-    if (headTag != null && clean) {
+    if (headTag != null && (clean || isTagRef)) {
         return headTag to true
     }
 
