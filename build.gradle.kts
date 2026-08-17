@@ -233,19 +233,26 @@ fun versionFromGit(): Pair<String, Boolean> {
         return headTag to true
     }
 
-    val latestTag = runGit("describe", "--tags", "--abbrev=0")
-    val snapshotVersion = latestTag?.let { tag ->
-        if (tag.endsWith("-SNAPSHOT", ignoreCase = true)) {
-            tag
+    fun computeSnapshotVersion(base: String): String {
+        return if (base.endsWith("-SNAPSHOT", ignoreCase = true)) {
+            base
         } else {
-            val parts = tag.split(".")
+            val parts = base.split(".")
             if (parts.size == 3 && parts.all { it.toIntOrNull() != null }) {
                 "${parts[0]}.${parts[1]}.${parts[2].toInt() + 1}-SNAPSHOT"
             } else {
-                "$tag-SNAPSHOT"
+                "$base-SNAPSHOT"
             }
         }
-    } ?: "next-SNAPSHOT"
+    }
+
+    val baseVersionProp = findProperty("baseVersion")?.toString()?.takeIf { it.isNotBlank() }
+    if (baseVersionProp != null) {
+        return computeSnapshotVersion(baseVersionProp) to false
+    }
+
+    val latestTag = runGit("describe", "--tags", "--abbrev=0")
+    val snapshotVersion = latestTag?.let { computeSnapshotVersion(it) } ?: "next-SNAPSHOT"
 
     return snapshotVersion to false
 }
