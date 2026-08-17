@@ -31,19 +31,23 @@ output is required.
 
 * Artifact: **org.lolicode:lavaplayer:x.y.z**
 
-CI publishes packages to GitHub Packages and mirrors them to the Codeberg Maven registry at
-`https://codeberg.org/api/packages/lolicode/maven`.
-
-It's suggested to use the Codeberg registry as it does not require authentication for public packages.
-But if you want (for example in github actions) you can also use the Github Packages registry,
-which is also available at `https://maven.pkg.github.com/lolicode-org/lavaplayer`.
+CI publishes packages to the public Lolicode Maven repository:
+`https://maven.lolicode.org/releases` for releases and
+`https://maven.lolicode.org/snapshots` for development snapshots. Packages are also
+published to GitHub Packages.
 
 Using in Gradle:
 
 ```gradle
 repositories {
   maven {
-    url = uri("https://codeberg.org/api/packages/lolicode/maven")
+    url = uri("https://maven.lolicode.org/releases")
+    content {
+      includeGroup("org.lolicode")
+    }
+  }
+  maven {
+    url = uri("https://maven.lolicode.org/snapshots")
     content {
       includeGroup("org.lolicode")
     }
@@ -66,8 +70,12 @@ Using in Maven:
 ```xml
 <repositories>
   <repository>
-    <id>lolicode-org</id>
-    <url>https://codeberg.org/api/packages/lolicode/maven</url>
+    <id>lolicode-releases</id>
+    <url>https://maven.lolicode.org/releases</url>
+  </repository>
+  <repository>
+    <id>lolicode-snapshots</id>
+    <url>https://maven.lolicode.org/snapshots</url>
   </repository>
   <repository>
     <id>jitpack</id>

@@ -1,7 +1,5 @@
 @file:Suppress("UnstableApiUsage")
 
-import org.gradle.api.credentials.HttpHeaderCredentials
-import org.gradle.authentication.http.HttpHeaderAuthentication
 import java.io.ByteArrayOutputStream
 
 data class PackageRelocation(
@@ -148,6 +146,20 @@ subprojects {
             }
 
             repositories {
+                val stagingDir = project.firstNonBlank(
+                    "stagingDir",
+                    "moemusic.publish.stagingDir",
+                    "STAGING_DIR",
+                    "LOCAL_REPO_DIR",
+                )
+
+                if (stagingDir != null) {
+                    maven {
+                        name = "LocalR2Staging"
+                        url = uri(rootProject.file(stagingDir))
+                    }
+                }
+
                 val githubPackagesUsername = project.firstNonBlank(
                     "githubPackagesUsername",
                     "gpr.user",
@@ -172,33 +184,22 @@ subprojects {
                         }
                     }
                 }
-
-                val codebergToken = project.firstNonBlank(
-                    "codebergToken",
-                    "CODEBERG_TOKEN"
-                )
-
-                if (codebergToken != null) {
-                    maven {
-                        name = "Codeberg"
-                        url = uri("https://codeberg.org/api/packages/lolicode/maven")
-
-                        credentials(HttpHeaderCredentials::class) {
-                            name = "Authorization"
-                            value = "token $codebergToken"
-                        }
-
-                        authentication {
-                            create<HttpHeaderAuthentication>("header")
-                        }
-                    }
-                }
             }
         }
     }
 }
 
 fun versionFromGit(): Pair<String, Boolean> {
+    val overrideVersion = sequenceOf(
+        System.getenv("LAVAPLAYER_VERSION"),
+        findProperty("lavaplayer.version")?.toString(),
+        findProperty("version")?.toString()?.takeIf { it != "unspecified" },
+    ).firstOrNull { !it.isNullOrBlank() }
+
+    if (overrideVersion != null) {
+        return overrideVersion to !overrideVersion.endsWith("-SNAPSHOT", ignoreCase = true)
+    }
+
     fun runGit(vararg args: String): String? {
         return try {
             val stdout = ByteArrayOutputStream()
@@ -223,17 +224,28 @@ fun versionFromGit(): Pair<String, Boolean> {
         }
     }
 
-    val headId = runGit("rev-parse", "HEAD")
-        ?: return "UNKNOWN-SNAPSHOT" to false
-
     val headTag = runGit("tag", "--points-at", "HEAD")
         ?.lineSequence()
-        ?.firstOrNull { it.isNotBlank() }
+        ?.firstOrNull { it.isNotBlank() && !it.endsWith("-SNAPSHOT", ignoreCase = true) }
 
-    val clean = System.getenv("CI") != null || runGit("status", "--porcelain").isNullOrBlank()
-    if (!clean) {
-        logger.lifecycle("Git state is dirty, version is a snapshot.")
+    val clean = runGit("status", "--porcelain")?.isBlank() == true
+    if (headTag != null && clean) {
+        return headTag to true
     }
 
-    return if (headTag != null && clean) headTag to true else "${headId}-SNAPSHOT" to false
+    val latestTag = runGit("describe", "--tags", "--abbrev=0")
+    val snapshotVersion = latestTag?.let { tag ->
+        if (tag.endsWith("-SNAPSHOT", ignoreCase = true)) {
+            tag
+        } else {
+            val parts = tag.split(".")
+            if (parts.size == 3 && parts.all { it.toIntOrNull() != null }) {
+                "${parts[0]}.${parts[1]}.${parts[2].toInt() + 1}-SNAPSHOT"
+            } else {
+                "$tag-SNAPSHOT"
+            }
+        }
+    } ?: "next-SNAPSHOT"
+
+    return snapshotVersion to false
 }
