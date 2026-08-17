@@ -37,7 +37,7 @@ fun VersionCatalogBuilder.common() {
 
     version("jackson") {
         require("[2.0, 3.0[")
-        prefer("2.21.3")
+        prefer("2.22.2")
     }
     library("jackson-core", "com.fasterxml.jackson.core", "jackson-core").versionRef("jackson")
     library("jackson-databind", "com.fasterxml.jackson.core", "jackson-databind").versionRef("jackson")
@@ -48,8 +48,8 @@ fun VersionCatalogBuilder.common() {
     }
     library("httpclient", "org.apache.httpcomponents", "httpclient").versionRef("httpclient")
 
-    library("jsoup", "org.jsoup", "jsoup").version("1.22.2")
-    library("json", "org.json", "json").version("20251224")
+    library("jsoup", "org.jsoup", "jsoup").version("1.23.1")
+    library("json", "org.json", "json").version("20260814")
 }
 
 fun VersionCatalogBuilder.others() {
@@ -59,5 +59,5 @@ fun VersionCatalogBuilder.others() {
 fun VersionCatalogBuilder.test() {
     library("junit-jupiter", "org.junit.jupiter", "junit-jupiter").version("5.14.4")
     library("junit-platform-launcher", "org.junit.platform", "junit-platform-launcher").version("1.14.4")
-    library("logback-classic", "ch.qos.logback", "logback-classic").version("1.5.32")
+    library("logback-classic", "ch.qos.logback", "logback-classic").version("1.6.3")
 }
