@@ -19,7 +19,9 @@ import java.nio.file.*;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Predicate;
@@ -606,15 +608,30 @@ public class NativeLibraryLoader {
             } catch (Exception e) {
                 log.warn("Failed to set POSIX permissions on {}: {}", path, e.getMessage());
             }
-        }
-        try {
-            path.toFile().setReadOnly();
-        } catch (Exception e) {
-            log.warn("Failed to set read-only on {}: {}", path, e.getMessage());
-        }
+            try {
+                // when running as root (mostly in linux ci container, but anyway... you'll never know how the user would run your app...)
+                // the file would always be writable on a writable mount, so prefer to check posix permission directly
+                Set<PosixFilePermission> perms = Files.getPosixFilePermissions(path);
+                if (perms.contains(PosixFilePermission.OWNER_WRITE) ||
+                    perms.contains(PosixFilePermission.GROUP_WRITE) ||
+                    perms.contains(PosixFilePermission.OTHERS_WRITE)) {
+                    throw new IOException("Failed to remove write permissions from native library: " + path);
+                }
+            } catch (UnsupportedOperationException ignored) {
+                if (Files.isWritable(path) || path.toFile().canWrite()) {
+                    throw new IOException("Failed to mark native library read-only: " + path);
+                }
+            }
+        } else {
+            try {
+                path.toFile().setReadOnly();
+            } catch (Exception e) {
+                log.warn("Failed to set read-only on {}: {}", path, e.getMessage());
+            }
 
-        if (Files.isWritable(path) || path.toFile().canWrite()) {
-            throw new IOException("Failed to mark native library read-only: " + path);
+            if (Files.isWritable(path) || path.toFile().canWrite()) {
+                throw new IOException("Failed to mark native library read-only: " + path);
+            }
         }
     }
 

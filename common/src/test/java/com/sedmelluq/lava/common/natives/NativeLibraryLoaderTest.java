@@ -52,7 +52,12 @@ class NativeLibraryLoaderTest {
         Path cachedAgain = extract(nativeBytes);
         assertEquals(cachedFile, cachedAgain);
         assertArrayEquals(nativeBytes, Files.readAllBytes(cachedAgain));
-        assertTrue(!cachedFile.toFile().canWrite(), "Extracted library must be marked read-only");
+        boolean isPosix = java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
+        if (isPosix) {
+            assertTrue(!Files.getPosixFilePermissions(cachedFile).contains(java.nio.file.attribute.PosixFilePermission.OWNER_WRITE), "Extracted library must not have write permissions");
+        } else {
+            assertTrue(!cachedFile.toFile().canWrite(), "Extracted library must be marked read-only");
+        }
     }
 
     @Test
