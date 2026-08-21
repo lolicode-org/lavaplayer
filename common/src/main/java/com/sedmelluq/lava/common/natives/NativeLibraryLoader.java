@@ -294,6 +294,7 @@ public class NativeLibraryLoader {
                 IOUtils.copy(libraryStream, fileStream);
             }
 
+            makeReadOnly(extractedLibraryPath);
             return extractedLibraryPath;
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -461,6 +462,7 @@ public class NativeLibraryLoader {
         if (Files.exists(cachedFile)) {
             deleteFileIfExists(tempFile);
             verifyFileHash(cachedFile, expectedHash);
+            makeReadOnly(cachedFile);
             return cachedFile;
         }
 
@@ -469,11 +471,13 @@ public class NativeLibraryLoader {
         } catch (FileAlreadyExistsException e) {
             deleteFileIfExists(tempFile);
             verifyFileHash(cachedFile, expectedHash);
+            makeReadOnly(cachedFile);
             return cachedFile;
         }
 
         try {
             verifyFileHash(cachedFile, expectedHash);
+            makeReadOnly(cachedFile);
         } catch (IOException | RuntimeException e) {
             deleteFileIfExists(cachedFile);
             throw e;
@@ -594,11 +598,39 @@ public class NativeLibraryLoader {
         return new String(result);
     }
 
+    private static void makeReadOnly(Path path) throws IOException {
+        boolean isPosix = FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
+        if (isPosix) {
+            try {
+                Files.setPosixFilePermissions(path, fromString("r-x------"));
+            } catch (Exception e) {
+                log.warn("Failed to set POSIX permissions on {}: {}", path, e.getMessage());
+            }
+        }
+        try {
+            path.toFile().setReadOnly();
+        } catch (Exception e) {
+            log.warn("Failed to set read-only on {}: {}", path, e.getMessage());
+        }
+
+        if (Files.isWritable(path) || path.toFile().canWrite()) {
+            throw new IOException("Failed to mark native library read-only: " + path);
+        }
+    }
+
     private static void deleteFileIfExists(Path path) {
         try {
-            Files.deleteIfExists(path);
+            if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+                if (!Files.isSymbolicLink(path)) {
+                    try {
+                        path.toFile().setWritable(true);
+                    } catch (Exception ignored) {
+                    }
+                }
+                Files.deleteIfExists(path);
+            }
         } catch (IOException e) {
-            log.debug("Failed to delete native library file {}.", path, e);
+            log.warn("Failed to delete native library file {}.", path, e);
         }
     }
 

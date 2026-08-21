@@ -66,7 +66,7 @@ public enum DefaultOperatingSystemTypes implements OperatingSystemType {
             return DARWIN;
         } else if (osFullName.startsWith("Solaris")) {
             return SOLARIS;
-        } else if (osFullName.toLowerCase().startsWith("linux")) {
+        } else if (osFullName.toLowerCase().startsWith("linux") || osFullName.toLowerCase().startsWith("android")) {
             if (checkAndroid(systemProbe, useCache)) {
                 return ANDROID;
             }
@@ -105,7 +105,8 @@ public enum DefaultOperatingSystemTypes implements OperatingSystemType {
     }
 
     private static boolean isAndroidRuntime(SystemProbe systemProbe) {
-        return propertyContains(systemProbe, "java.runtime.name", "android") ||
+        return propertyContains(systemProbe, "os.name", "android") ||
+            propertyContains(systemProbe, "java.runtime.name", "android") ||
             propertyContains(systemProbe, "java.vm.name", "dalvik") ||
             propertyContains(systemProbe, "java.vm.name", "art") ||
             propertyContains(systemProbe, "java.vendor", "android") ||

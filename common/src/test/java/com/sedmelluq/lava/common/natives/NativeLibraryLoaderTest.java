@@ -52,6 +52,7 @@ class NativeLibraryLoaderTest {
         Path cachedAgain = extract(nativeBytes);
         assertEquals(cachedFile, cachedAgain);
         assertArrayEquals(nativeBytes, Files.readAllBytes(cachedAgain));
+        assertTrue(!cachedFile.toFile().canWrite(), "Extracted library must be marked read-only");
     }
 
     @Test
@@ -59,6 +60,7 @@ class NativeLibraryLoaderTest {
         byte[] nativeBytes = "native-library-content".getBytes(StandardCharsets.UTF_8);
         Path cachedFile = extract(nativeBytes);
 
+        cachedFile.toFile().setWritable(true);
         Files.write(cachedFile, "corrupt-content".getBytes(StandardCharsets.UTF_8));
 
         IOException error = assertThrows(IOException.class, () -> extract(nativeBytes));

@@ -14,6 +14,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class DefaultOperatingSystemTypesTest {
 
     @Test
+    void detectsAndroidWhenOsNameIsAndroid() {
+        TestSystemProbe probe = new TestSystemProbe("Android");
+
+        assertEquals(DefaultOperatingSystemTypes.ANDROID, DefaultOperatingSystemTypes.detect(probe));
+    }
+
+    @Test
     void detectsAndroidFromEnvironmentBeforeLinux() {
         TestSystemProbe probe = new TestSystemProbe("Linux");
         probe.environment.put("ANDROID_ROOT", "/system");
