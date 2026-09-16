@@ -25,7 +25,7 @@ dependencyResolutionManagement {
 fun VersionCatalogBuilder.common() {
     version("slf4j") {
         require("[2.0, 3.0[")
-        prefer("2.0.18")
+        prefer("2.0.19")
     }
     library("slf4j", "org.slf4j", "slf4j-api").versionRef("slf4j")
     version("commons-io") {
@@ -48,7 +48,7 @@ fun VersionCatalogBuilder.common() {
     }
     library("httpclient", "org.apache.httpcomponents", "httpclient").versionRef("httpclient")
 
-    library("jsoup", "org.jsoup", "jsoup").version("1.23.1")
+    library("jsoup", "org.jsoup", "jsoup").version("1.23.2")
     library("json", "org.json", "json").version("20260814")
 }
 

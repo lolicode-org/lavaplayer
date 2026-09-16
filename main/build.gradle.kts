@@ -49,7 +49,7 @@ tasks {
         }
     }
 
-    val updateVersion by registering {
+    val updateVersion = register("updateVersion") {
         inputs.property("version", version)
         outputs.file(versionResourceFile)
 
